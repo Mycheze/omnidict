@@ -1,26 +1,192 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Custom styles for dictionary app */
+@layer components {
+  .dictionary-entry {
+    @apply space-y-4;
+  }
+  
+  .dictionary-headword {
+    @apply text-3xl font-bold text-primary;
+  }
+  
+  .dictionary-pos {
+    @apply text-sm font-medium text-muted-foreground italic;
+  }
+  
+  .dictionary-definition {
+    @apply text-base font-medium;
+  }
+  
+  .dictionary-example {
+    @apply text-sm bg-muted p-3 rounded-md border-l-4 border-primary;
+  }
+  
+  .dictionary-translation {
+    @apply text-sm text-muted-foreground italic mt-1;
+  }
+  
+  .dictionary-grammar {
+    @apply text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-full;
+  }
+}
+
+/* Loading animations */
+@layer utilities {
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+}
+
+/* Context-aware search styles */
+@layer components {
+  .context-search-container {
+    @apply relative;
+  }
+  
+  .context-sentence-input {
+    @apply w-full p-3 border rounded-md min-h-[80px] max-h-[200px] resize-y bg-background;
+  }
+  
+  .context-word-highlight {
+    @apply bg-blue-200 text-blue-900 rounded px-1;
+  }
+  
+  .context-aware-badge {
+    @apply text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium;
+  }
+  
+  .context-example-highlight {
+    @apply bg-green-100 border-green-300;
+  }
+  
+  .context-sentence-display {
+    @apply bg-green-50 border-green-200 p-4 rounded-md mb-4;
+  }
+  
+  .word-selection-hint {
+    @apply text-xs text-muted-foreground italic;
+  }
+  
+  .context-mode-indicator {
+    @apply text-purple-600 font-medium;
+  }
+}
+
+/* Text selection enhancement */
+@layer utilities {
+  .selectable-text {
+    @apply cursor-pointer select-text;
+  }
+  
+  .selectable-text:hover {
+    @apply bg-blue-50;
+  }
+  
+  .word-highlight-preview {
+    @apply bg-yellow-200 text-yellow-900 rounded px-1 transition-all duration-150;
+  }
+  
+  .context-active {
+    @apply border-l-4 border-l-purple-500 bg-purple-50;
+  }
+}
+
+/* Animation for context expansion */
+@keyframes context-expand {
+  from {
+    max-height: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 500px;
+    opacity: 1;
+  }
+}
+
+@keyframes context-collapse {
+  from {
+    max-height: 500px;
+    opacity: 1;
+  }
+  to {
+    max-height: 0;
+    opacity: 0;
+  }
+}
+
+.context-expand-animation {
+  animation: context-expand 0.3s ease-out;
+}
+
+.context-collapse-animation {
+  animation: context-collapse 0.3s ease-in;
 }

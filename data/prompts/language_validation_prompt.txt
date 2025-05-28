@@ -1,0 +1,55 @@
+Given a language input '[INPUT_LANGUAGE]', identify and format it according to these rules:
+
+1. Return a JSON object with two fields:
+   - "standardized_name": The language name in English, properly capitalized (e.g., "Japanese", "Spanish", "Mandarin Chinese")
+   - "display_name": The original input '[INPUT_LANGUAGE]' (preserve its exact spelling and formatting)
+
+2. If '[INPUT_LANGUAGE]' is already a valid language name in English:
+   - Keep it as is for "standardized_name", just ensure proper capitalization
+   - Example: "spanish" → {"standardized_name": "Spanish", "display_name": "spanish"}
+
+3. If '[INPUT_LANGUAGE]' is in a non-English language:
+   - Convert to the standard English name for "standardized_name"
+   - Keep the original for "display_name"
+   - Examples: 
+     * "español" → {"standardized_name": "Spanish", "display_name": "español"}
+     * "français" → {"standardized_name": "French", "display_name": "français"}
+     * "deutsch" → {"standardized_name": "German", "display_name": "deutsch"}
+     * "čeština" → {"standardized_name": "Czech", "display_name": "čeština"}
+
+4. For dialect or variant specifications:
+   - Preserve them in the standardized name, properly formatted
+   - Examples:
+     * "brazilian portuguese" → {"standardized_name": "Brazilian Portuguese", "display_name": "brazilian portuguese"}
+     * "simplified chinese" → {"standardized_name": "Simplified Chinese", "display_name": "simplified chinese"}
+
+5. For language codes or abbreviations:
+   - Convert to full language names
+   - Examples:
+     * "jp" → {"standardized_name": "Japanese", "display_name": "jp"}
+     * "zh" → {"standardized_name": "Chinese", "display_name": "zh"}
+     * "es" → {"standardized_name": "Spanish", "display_name": "es"}
+
+6. For common typos or misspellings:
+   - Identify the intended language and correct it
+   - Examples:
+     * "spanich" → {"standardized_name": "Spanish", "display_name": "spanich"}
+     * "englsh" → {"standardized_name": "English", "display_name": "englsh"}
+     * "geman" → {"standardized_name": "German", "display_name": "geman"}
+
+7. For ambiguous or unrecognizable input:
+   - If you can make a reasonable guess, do so
+   - If completely unrecognizable, treat as a custom language name with proper capitalization
+   - Examples:
+     * "xyz123" → {"standardized_name": "Xyz123", "display_name": "xyz123"}
+     * "conlang" → {"standardized_name": "Constructed Language", "display_name": "conlang"}
+
+8. For constructed or fictional languages:
+   - Use standard names where they exist, otherwise preserve the input with proper capitalization
+   - Examples:
+     * "klingon" → {"standardized_name": "Klingon", "display_name": "klingon"}
+     * "elvish" → {"standardized_name": "Elvish", "display_name": "elvish"}
+
+IMPORTANT: Always return a valid JSON response. Even if the input seems like nonsense, make your best effort to provide a reasonable standardized name. The goal is to be helpful and inclusive while maintaining consistency.
+
+Return ONLY the JSON object without any additional text, explanations, or comments.

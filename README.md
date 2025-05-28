@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Deep Dict
+
+An AI-powered dictionary application for language learners with context-aware definitions, example sentences, and Anki integration.
+
+## Features
+
+- **Context-Aware Search**: Double-click words in sentences to get definitions that understand context
+- **AI-Generated Entries**: Powered by DeepSeek AI for accurate definitions and examples
+- **Anki Integration**: Export entries directly to your Anki decks
+- **Multi-Language Support**: Customizable language pairs for learning
+- **Offline-First**: SQLite database for fast, reliable access
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+ 
+- A DeepSeek API key
+
+### Environment Setup
+
+1. Copy `.env.example` to `.env.local`:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Add your API key to `.env.local`:
+   ```
+   DEEPSEEK_API_KEY=your_api_key_here
+   ```
+
+### Installation
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3200](http://localhost:3200) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Building for Production
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## Technology Stack
 
-To learn more about Next.js, take a look at the following resources:
+- **Frontend**: Next.js 15, React 19, Tailwind CSS
+- **Database**: SQLite with better-sqlite3
+- **AI**: DeepSeek API (OpenAI-compatible)
+- **State Management**: Zustand
+- **UI Components**: Shadcn/ui + Lucide icons
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Contributing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This is an open-source project. Feel free to submit issues and pull requests!
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+MIT License - see LICENSE file for details
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development Notes
+
+- Database is automatically created on first run
+- The app runs on port 3200 by default
+- Context-aware search works by double-clicking words in the text area
+- All AI prompts are stored in `data/prompts/` for easy customization
+
+# Todo List
+
+## Features
+- [ ] Settings!
+ - [x] Language managing
+ - [x] Anki config
+ - [ ] Model changing
+ - [ ] Text size or font changing?
+- [x] Anki exporting
+- [x] Context aware searching
+- [ ] Clipboard monitoring
+- [x] Async searching
+- [ ] Anki settings PER language
+- [ ] Extensive testing
+
+## Bugs
+- [ ] Recents show non-matching language pairs
+- [ ] Slow-ish UI?
+- [ ] Part of speech is always in English
+- [ ] Clicking on an entry clears the filter (it should stay and have a little x to clear)
+- [ ] Duplicate entry adding (I don't think it generates new entries, but it doubles up in the list)
+
+
+
+# Instructions

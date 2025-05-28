@@ -1,0 +1,97 @@
+Generate a dictionary entry in JSON format for BIDIRECTIONAL language learning where:  
+- Definitions are ALWAYS in [DEFINITION_LANGUAGE]  
+- Examples are ALWAYS in [TARGET_LANGUAGE]  
+- Translations (if needed) are in [DEFINITION_LANGUAGE]  
+- Multi-word expressions are preserved exactly as provided
+
+IMPORTANT: This is a bidirectional dictionary. The word being defined could be in [SOURCE_LANGUAGE] OR [TARGET_LANGUAGE]. Handle both cases intelligently:
+- If the word is in [SOURCE_LANGUAGE], define it and provide [TARGET_LANGUAGE] examples
+- If the word is in [TARGET_LANGUAGE], define it and provide [TARGET_LANGUAGE] examples
+- Always make definitions in [DEFINITION_LANGUAGE] regardless of which language the word comes from
+
+### **JSON Structure (MUST MATCH EXACTLY)**  
+```json
+{
+    "metadata": {
+        "source_language": "[SOURCE_LANGUAGE]",
+        "target_language": "[TARGET_LANGUAGE]",
+        "definition_language": "[DEFINITION_LANGUAGE]"
+    },
+    "headword": str,  // PRESERVE AS-IS including all words and diacritics
+    "part_of_speech": str|list,  // REQUIRED: noun, verb, adjective, etc.
+    "meanings": [{
+        "definition": str,  // ALWAYS in [DEFINITION_LANGUAGE]
+        "grammar": {
+            "noun_type": str|null,  // e.g., "masculine", "feminine", "neuter"
+            "verb_type": str|null,  // e.g., "transitive", "intransitive", "irregular"
+            "comparison": str|null  // e.g., "comparative", "superlative"
+        },
+        "examples": [{
+            "sentence": str,  // ALWAYS in [TARGET_LANGUAGE]
+            "translation": str|null  // In [DEFINITION_LANGUAGE] if different from [TARGET_LANGUAGE]
+        }]
+    }]
+}
+```
+
+### **Strict Rules**
+
+**Definition Language:**
+- Definitions must be in [DEFINITION_LANGUAGE] (no exceptions)
+- If [DEFINITION_LANGUAGE] = [TARGET_LANGUAGE], still use [DEFINITION_LANGUAGE]
+
+**Example Sentences:**
+- Always in [TARGET_LANGUAGE]
+- Include a translation only if [DEFINITION_LANGUAGE] ≠ [TARGET_LANGUAGE]
+- Use natural, everyday examples that show practical usage
+
+**Part of Speech:**
+- MUST be included and accurate (noun, verb, adjective, adverb, preposition, etc.)
+- Use simple, standard grammatical terms
+- Can be a string or list if word has multiple functions
+
+**Grammar Notes:**
+- Only include if relevant (e.g., noun gender, verb conjugation patterns)
+- Keep terminology simple (e.g., "feminine noun," not "noun of feminine grammatical gender")
+- For Czech: include gender for nouns (masculine, feminine, neuter)
+- For verbs: include transitivity and conjugation patterns if irregular
+
+**Content Style:**
+- Definitions: Short, clear, and natural (e.g., "a musical instrument with strings" not "a chordophone played with a bow")
+- Examples: Everyday usage, practical sentences that language learners would encounter
+- Avoid poetic/literary examples unless specifically requested
+
+**Structural Integrity:**
+- All keys must be present (use null for empty fields)
+- No extra keys, no missing keys
+- Ensure valid JSON formatting
+
+**Special handling for multi-word expressions:**
+- Phrasal verbs (e.g., "go out with"): Maintain exact word order and particles
+- Compound nouns (e.g., "coffee table"): Preserve spacing
+- Separable verbs (e.g., "všímat si"): Keep all components
+- Idiomatic expressions: Define the complete phrase, not individual words
+
+**Language-specific considerations:**
+- Czech: Handle proper declension patterns, include gender information
+- German: Handle separable verbs, case requirements, gender
+- Spanish: Include gender, irregular conjugations
+- Handle diacritical marks correctly for all languages
+
+### **Prohibited:**
+❌ Definitions in the wrong language
+❌ Missing part_of_speech field
+❌ Overly complex or academic explanations
+❌ Missing/undefined JSON fields
+❌ Markdown, HTML, or comments in the JSON
+❌ Inconsistent language usage
+
+### **Language Settings:**
+- Definition Language: [DEFINITION_LANGUAGE]
+- Target Language: [TARGET_LANGUAGE]  
+- Source Language: [SOURCE_LANGUAGE]
+
+### **Bidirectional Processing:**
+Remember that this dictionary works in both directions. Whether the user inputs an English word to learn Czech, or a Czech word to get an English definition, create an entry that serves the language learning purpose effectively.
+
+Output ONLY the JSON object. The word to define follows:

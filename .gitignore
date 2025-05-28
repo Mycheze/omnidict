@@ -39,3 +39,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Deep Dict specific files
+# Database files
+*.db
+data/dictionary.db
+
+# Project knowledge files (generated for AI context)
+project_knowledge/
+project_tree.txt
+
+# IDE settings
+.vscode/
+.idea/
+
+# Additional logs
+*.log

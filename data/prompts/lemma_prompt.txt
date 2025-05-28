@@ -1,0 +1,20 @@
+You are performing lemmatization: finding the dictionary headword (citation form) that '[TARGET_WORD]' would be listed under in a [TARGET_LANGUAGE] dictionary.
+
+Lemmatization reduces inflected or variant forms to their base dictionary form - the form you would look up to find the word's definition.
+
+Examples of lemmatization across languages:
+• English: "running" → "run", "better" → "good", "mice" → "mouse", "went" → "go"
+• Spanish: "corriendo" → "correr", "casas" → "casa", "mejores" → "bueno"  
+• French: "courant" → "courir", "maisons" → "maison", "meilleures" → "bon"
+• German: "laufend" → "laufen", "Häuser" → "Haus", "bessere" → "gut"
+• Czech: "běžící" → "běžet", "domy" → "dům", "lepší" → "dobrý"
+• Russian: "бегущий" → "бежать", "дома" → "дом", "лучше" → "хороший"
+
+For '[TARGET_WORD]':
+- Find the base form that would appear as the main dictionary entry
+- If it's already in base form, return it unchanged
+- If it's inflected (plural, conjugated, declined, etc.), return the citation form
+- For multi-word expressions, lemmatize as a complete unit
+- Preserve the original language - do not translate
+
+Return ONLY the [TARGET_LANGUAGE] lemma with no additional text, explanations, or punctuation.
