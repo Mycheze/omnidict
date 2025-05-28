@@ -45,9 +45,9 @@ export async function POST(request: NextRequest) {
       lemma = contextualLemma;
 
       // Check if entry already exists (check both original word and lemma)
-      let existingEntry = db.getEntryByHeadword(word, sourceLanguage, targetLanguage);
+      let existingEntry = await db.getEntryByHeadword(word, sourceLanguage, targetLanguage);
       if (!existingEntry && lemma !== word) {
-        existingEntry = db.getEntryByHeadword(lemma, sourceLanguage, targetLanguage);
+        existingEntry = await db.getEntryByHeadword(lemma, sourceLanguage, targetLanguage);
       }
 
       if (existingEntry) {
@@ -79,9 +79,9 @@ export async function POST(request: NextRequest) {
       lemma = standardLemma;
 
       // Check if entry already exists
-      let existingEntry = db.getEntryByHeadword(word, sourceLanguage, targetLanguage);
+      let existingEntry = await db.getEntryByHeadword(word, sourceLanguage, targetLanguage);
       if (!existingEntry && lemma !== word) {
-        existingEntry = db.getEntryByHeadword(lemma, sourceLanguage, targetLanguage);
+        existingEntry = await db.getEntryByHeadword(lemma, sourceLanguage, targetLanguage);
       }
 
       if (existingEntry) {
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Save to database
-    const entryId = db.addEntry(entry);
+    const entryId = await db.addEntry(entry);
     if (!entryId) {
       const response: ApiResponse = {
         success: false,

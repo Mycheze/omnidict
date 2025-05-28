@@ -128,7 +128,7 @@ class AIManager {
    */
   public async getLemma({ word, targetLanguage }: LemmaRequest): Promise<LemmaResponse> {
     // Check cache first
-    const cachedLemma = this.db.getCachedLemma(word, targetLanguage);
+    const cachedLemma = this.await db.getCachedLemma(word, targetLanguage);
     if (cachedLemma) {
       return { lemma: cachedLemma, cached: true };
     }
@@ -194,7 +194,7 @@ class AIManager {
       console.log('  Character codes:', cleanedLemma.split('').map(c => `${c}:${c.charCodeAt(0)}`).join(' '));
 
       // Cache the result
-      this.db.cacheLemma(word, cleanedLemma, targetLanguage);
+      this.await db.cacheLemma(word, cleanedLemma, targetLanguage);
 
       console.log('Lemma result:', word, '→', cleanedLemma);
 
@@ -395,7 +395,7 @@ class AIManager {
   }): Promise<LemmaResponse> {
     // Check cache first (context-aware cache key)
     const cacheKey = `${word}|${contextSentence.substring(0, 50)}`;
-    const cachedLemma = this.db.getCachedLemma(cacheKey, targetLanguage);
+    const cachedLemma = this.await db.getCachedLemma(cacheKey, targetLanguage);
     if (cachedLemma) {
       return { lemma: cachedLemma, cached: true };
     }
@@ -441,7 +441,7 @@ class AIManager {
       }
 
       // Cache the result
-      this.db.cacheLemma(cacheKey, cleanedLemma, targetLanguage);
+      this.await db.cacheLemma(cacheKey, cleanedLemma, targetLanguage);
 
       console.log('Contextual lemma result:', word, '→', cleanedLemma);
       return { lemma: cleanedLemma, cached: false };

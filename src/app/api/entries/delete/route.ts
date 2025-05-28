@@ -15,7 +15,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const db = DatabaseManager.getInstance();
-    const deleted = db.deleteEntry(headword, sourceLanguage, targetLanguage);
+    const deleted = await db.deleteEntry(headword, sourceLanguage, targetLanguage);
 
     if (!deleted) {
       const response: ApiResponse = {

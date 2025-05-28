@@ -5,7 +5,7 @@ import { ApiResponse } from '@/lib/types';
 export async function GET() {
   try {
     const db = DatabaseManager.getInstance();
-    const languages = db.getAllLanguages();
+    const languages = await db.getAllLanguages();
 
     const response: ApiResponse<typeof languages> = {
       success: true,

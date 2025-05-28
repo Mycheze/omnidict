@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
     const db = DatabaseManager.getInstance();
     
     // Try to find entry with exact language match first
-    let entry = db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
+    let entry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
     
     // If not found and we have language filters, try without definition language filter
     if (!entry && sourceLanguage && targetLanguage) {
-      entry = db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
+      entry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
     }
 
     if (!entry) {

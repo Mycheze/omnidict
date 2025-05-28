@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const ai = AIManager.getInstance();
 
     // Check if entry exists
-    const existingEntry = db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
+    const existingEntry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
     if (!existingEntry) {
       const response: ApiResponse = {
         success: false,
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Delete the existing entry
-    const deleted = db.deleteEntry(headword, sourceLanguage, targetLanguage);
+    const deleted = await db.deleteEntry(headword, sourceLanguage, targetLanguage);
     if (!deleted) {
       const response: ApiResponse = {
         success: false,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Save the new entry
-    const entryId = db.addEntry(newEntry);
+    const entryId = await db.addEntry(newEntry);
     if (!entryId) {
       const response: ApiResponse = {
         success: false,

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     const db = DatabaseManager.getInstance();
-    const results = db.searchEntries(filters, page, pageSize);
+    const results = await db.searchEntries(filters, page, pageSize);
 
     const response: ApiResponse<SearchResult> = {
       success: true,
