@@ -25,8 +25,7 @@ interface JoinedEntryRow {
 }
 
 /**
- * Repository for entry operations
- * Handles entry CRUD operations with optimized queries
+ * Repository for entry operations with async support for both SQLite and Turso
  */
 export class EntryRepository {
   private core: DatabaseCore;
@@ -34,7 +33,6 @@ export class EntryRepository {
 
   constructor(core: DatabaseCore) {
     this.core = core;
-    // Don't prepare statements immediately - do it lazily
   }
 
   /**
@@ -65,17 +63,17 @@ export class EntryRepository {
         return null; // Entry already exists
       }
 
-      // Get statements lazily
       const statements = this.getStatements();
 
-      // Use transaction for atomicity
-      const transaction = db.transaction(() => {
+      // For async compatibility, we need to handle transactions differently
+      // SQLite supports transactions, but Turso might not in the same way
+      try {
         // Insert new entry
         const partOfSpeech = Array.isArray(entry.part_of_speech) 
           ? JSON.stringify(entry.part_of_speech) 
           : entry.part_of_speech;
 
-        const entryResult = statements.insertEntry.run(
+        const entryResult = await statements.insertEntry.run(
           entry.headword,
           partOfSpeech,
           entry.metadata.source_language,
@@ -85,13 +83,13 @@ export class EntryRepository {
           entry.metadata.context_sentence || null
         );
 
-        const entryId = entryResult.lastInsertRowid as number;
+        const entryId = Number(entryResult.lastInsertRowid);
 
         // Insert meanings and examples
         for (let meaningIndex = 0; meaningIndex < entry.meanings.length; meaningIndex++) {
           const meaning = entry.meanings[meaningIndex];
           
-          const meaningResult = statements.insertMeaning.run(
+          const meaningResult = await statements.insertMeaning.run(
             entryId,
             meaning.definition,
             meaningIndex,
@@ -100,13 +98,13 @@ export class EntryRepository {
             meaning.grammar.comparison || null
           );
 
-          const meaningId = meaningResult.lastInsertRowid as number;
+          const meaningId = Number(meaningResult.lastInsertRowid);
 
           // Insert examples
           for (let exampleIndex = 0; exampleIndex < meaning.examples.length; exampleIndex++) {
             const example = meaning.examples[exampleIndex];
             
-            statements.insertExample.run(
+            await statements.insertExample.run(
               meaningId,
               example.sentence,
               example.translation || null,
@@ -117,9 +115,10 @@ export class EntryRepository {
         }
 
         return entryId;
-      });
-
-      return transaction();
+      } catch (error) {
+        console.error('Error in entry transaction:', error);
+        throw error;
+      }
     } catch (error) {
       console.error('Error adding entry:', error);
       return null;
@@ -139,9 +138,8 @@ export class EntryRepository {
         return null;
       }
 
-      // Use prepared statement for optimal performance
       const statements = this.getStatements();
-      const result = statements.getEntryByHeadword.get(
+      const result = await statements.getEntryByHeadword.get(
         headword, sourceLanguage, targetLanguage
       ) as { id: number } | undefined;
 
@@ -161,9 +159,8 @@ export class EntryRepository {
    */
   public async getEntryById(entryId: number): Promise<DictionaryEntry | null> {
     try {
-      // Use prepared statement for optimal performance
       const statements = this.getStatements();
-      const rows = statements.getEntryById.all(entryId) as JoinedEntryRow[];
+      const rows = await statements.getEntryById.all(entryId) as JoinedEntryRow[];
 
       if (rows.length === 0) return null;
 
@@ -181,14 +178,14 @@ export class EntryRepository {
     try {
       const db = this.core.getDatabase();
       
-      // Use transaction for atomicity
-      const transaction = db.transaction(() => {
+      // For updates, we need to be more careful about async operations
+      try {
         // Update main entry
         const partOfSpeech = Array.isArray(entry.part_of_speech) 
           ? JSON.stringify(entry.part_of_speech) 
           : entry.part_of_speech;
 
-        db.prepare(`
+        const updateEntryStmt = db.prepare(`
           UPDATE entries SET 
             headword = ?, 
             part_of_speech = ?, 
@@ -199,7 +196,9 @@ export class EntryRepository {
             context_sentence = ?,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).run(
+        `);
+
+        await updateEntryStmt.run(
           entry.headword,
           partOfSpeech,
           entry.metadata.source_language,
@@ -210,17 +209,16 @@ export class EntryRepository {
           entryId
         );
 
-        // Delete existing meanings and examples (CASCADE will handle examples)
-        db.prepare('DELETE FROM meanings WHERE entry_id = ?').run(entryId);
+        // Delete existing meanings and examples
+        const deleteMeaningsStmt = db.prepare('DELETE FROM meanings WHERE entry_id = ?');
+        await deleteMeaningsStmt.run(entryId);
 
-        // Insert new meanings and examples
+        // Insert new meanings and examples using prepared statements
+        const statements = this.getStatements();
         for (let meaningIndex = 0; meaningIndex < entry.meanings.length; meaningIndex++) {
           const meaning = entry.meanings[meaningIndex];
           
-          const meaningResult = db.prepare(`
-            INSERT INTO meanings (entry_id, definition, order_index, noun_type, verb_type, comparison)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(
+          const meaningResult = await statements.insertMeaning.run(
             entryId,
             meaning.definition,
             meaningIndex,
@@ -229,16 +227,13 @@ export class EntryRepository {
             meaning.grammar.comparison || null
           );
 
-          const meaningId = meaningResult.lastInsertRowid as number;
+          const meaningId = Number(meaningResult.lastInsertRowid);
 
           // Insert examples
           for (let exampleIndex = 0; exampleIndex < meaning.examples.length; exampleIndex++) {
             const example = meaning.examples[exampleIndex];
             
-            db.prepare(`
-              INSERT INTO examples (meaning_id, sentence, translation, is_context_sentence, order_index)
-              VALUES (?, ?, ?, ?, ?)
-            `).run(
+            await statements.insertExample.run(
               meaningId,
               example.sentence,
               example.translation || null,
@@ -249,9 +244,10 @@ export class EntryRepository {
         }
 
         return true;
-      });
-
-      return transaction();
+      } catch (error) {
+        console.error('Error in update transaction:', error);
+        return false;
+      }
     } catch (error) {
       console.error('Error updating entry:', error);
       return false;
@@ -281,7 +277,8 @@ export class EntryRepository {
         params.push(targetLanguage);
       }
 
-      const result = db.prepare(query).run(...params);
+      const stmt = db.prepare(query);
+      const result = await stmt.run(...params);
       return result.changes > 0;
     } catch (error) {
       console.error('Error deleting entry:', error);
@@ -302,20 +299,20 @@ export class EntryRepository {
       const db = this.core.getDatabase();
       
       // Get total count
-      const countQuery = `
+      const countStmt = db.prepare(`
         SELECT COUNT(*) as count FROM entries 
         WHERE source_language = ? AND target_language = ?
-      `;
-      const countResult = db.prepare(countQuery).get(sourceLanguage, targetLanguage) as { count: number };
+      `);
+      const countResult = await countStmt.get(sourceLanguage, targetLanguage) as { count: number };
       
       // Get entries
-      const entriesQuery = `
+      const entriesStmt = db.prepare(`
         SELECT id FROM entries 
         WHERE source_language = ? AND target_language = ?
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
-      `;
-      const rows = db.prepare(entriesQuery).all(
+      `);
+      const rows = await entriesStmt.all(
         sourceLanguage, 
         targetLanguage, 
         pageSize, 
@@ -349,15 +346,15 @@ export class EntryRepository {
     try {
       const db = this.core.getDatabase();
       
-      const query = `
+      const stmt = db.prepare(`
         SELECT id FROM entries 
         WHERE source_language = ? AND target_language = ?
         AND created_at > datetime('now', '-30 days')
         ORDER BY created_at DESC 
         LIMIT ?
-      `;
+      `);
       
-      const rows = db.prepare(query).all(sourceLanguage, targetLanguage, limit) as Array<{ id: number }>;
+      const rows = await stmt.all(sourceLanguage, targetLanguage, limit) as Array<{ id: number }>;
       
       const entries: DictionaryEntry[] = [];
       for (const row of rows) {
@@ -383,8 +380,7 @@ export class EntryRepository {
     try {
       const db = this.core.getDatabase();
       
-      // Use single query to get all unique languages
-      const result = db.prepare(`
+      const stmt = db.prepare(`
         SELECT DISTINCT 
           source_language,
           target_language,
@@ -392,7 +388,9 @@ export class EntryRepository {
         FROM entries
         WHERE source_language IS NOT NULL 
         AND target_language IS NOT NULL
-      `).all() as Array<{
+      `);
+      
+      const result = await stmt.all() as Array<{
         source_language: string;
         target_language: string;
         definition_language: string;
@@ -485,14 +483,14 @@ export class EntryRepository {
   /**
    * Check if an entry exists
    */
-  public entryExists(
+  public async entryExists(
     headword: string,
     sourceLanguage: string,
     targetLanguage: string
-  ): boolean {
+  ): Promise<boolean> {
     try {
       const statements = this.getStatements();
-      const result = statements.getEntryByHeadword.get(
+      const result = await statements.getEntryByHeadword.get(
         headword, sourceLanguage, targetLanguage
       ) as { id: number } | undefined;
 
@@ -506,13 +504,14 @@ export class EntryRepository {
   /**
    * Get entry count for a language pair
    */
-  public getEntryCount(sourceLanguage: string, targetLanguage: string): number {
+  public async getEntryCount(sourceLanguage: string, targetLanguage: string): Promise<number> {
     try {
       const db = this.core.getDatabase();
-      const result = db.prepare(`
+      const stmt = db.prepare(`
         SELECT COUNT(*) as count FROM entries 
         WHERE source_language = ? AND target_language = ?
-      `).get(sourceLanguage, targetLanguage) as { count: number };
+      `);
+      const result = await stmt.get(sourceLanguage, targetLanguage) as { count: number };
 
       return result.count;
     } catch (error) {

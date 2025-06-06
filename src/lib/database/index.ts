@@ -9,8 +9,7 @@ import {
 } from '@/lib/types';
 
 /**
- * Main Database Manager
- * Coordinates between different repositories and provides a unified interface
+ * Main Database Manager with full async support
  */
 class DatabaseManager {
   private core: DatabaseCore;
@@ -24,9 +23,6 @@ class DatabaseManager {
     console.log('Database Manager initialized - repositories will be created lazily');
   }
 
-  /**
-   * Get singleton instance of DatabaseManager
-   */
   public static getInstance(): DatabaseManager {
     if (!DatabaseManager.instance) {
       DatabaseManager.instance = new DatabaseManager();
@@ -34,13 +30,9 @@ class DatabaseManager {
     return DatabaseManager.instance;
   }
 
-  /**
-   * Ensure database is initialized and repositories are ready
-   */
   private async ensureReady(): Promise<void> {
     await this.core.ensureInitialized();
     
-    // Initialize repositories lazily
     if (!this.entryRepo) {
       this.entryRepo = new EntryRepository(this.core);
       this.searchRepo = new SearchRepository(this.core);
@@ -50,17 +42,11 @@ class DatabaseManager {
 
   // ===== ENTRY OPERATIONS =====
 
-  /**
-   * Add a new dictionary entry
-   */
   public async addEntry(entry: DictionaryEntry): Promise<number | null> {
     await this.ensureReady();
     return this.entryRepo!.addEntry(entry);
   }
 
-  /**
-   * Get entry by headword
-   */
   public async getEntryByHeadword(
     headword: string,
     sourceLanguage?: string,
@@ -70,25 +56,16 @@ class DatabaseManager {
     return this.entryRepo!.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
   }
 
-  /**
-   * Get entry by ID
-   */
   public async getEntryById(entryId: number): Promise<DictionaryEntry | null> {
     await this.ensureReady();
     return this.entryRepo!.getEntryById(entryId);
   }
 
-  /**
-   * Update an existing entry
-   */
   public async updateEntry(entryId: number, entry: DictionaryEntry): Promise<boolean> {
     await this.ensureReady();
     return this.entryRepo!.updateEntry(entryId, entry);
   }
 
-  /**
-   * Delete an entry
-   */
   public async deleteEntry(
     headword: string,
     sourceLanguage?: string,
@@ -98,9 +75,6 @@ class DatabaseManager {
     return this.entryRepo!.deleteEntry(headword, sourceLanguage, targetLanguage);
   }
 
-  /**
-   * Check if an entry exists
-   */
   public async entryExists(
     headword: string,
     sourceLanguage: string,
@@ -110,17 +84,11 @@ class DatabaseManager {
     return this.entryRepo!.entryExists(headword, sourceLanguage, targetLanguage);
   }
 
-  /**
-   * Get entry count for a language pair
-   */
   public async getEntryCount(sourceLanguage: string, targetLanguage: string): Promise<number> {
     await this.ensureReady();
     return this.entryRepo!.getEntryCount(sourceLanguage, targetLanguage);
   }
 
-  /**
-   * Get entries for specific language pair with pagination
-   */
   public async getEntriesForLanguages(
     sourceLanguage: string,
     targetLanguage: string,
@@ -131,9 +99,6 @@ class DatabaseManager {
     return this.entryRepo!.getEntriesForLanguages(sourceLanguage, targetLanguage, page, pageSize);
   }
 
-  /**
-   * Get recent entries
-   */
   public async getRecentEntries(
     sourceLanguage: string,
     targetLanguage: string,
@@ -143,9 +108,6 @@ class DatabaseManager {
     return this.entryRepo!.getRecentEntries(sourceLanguage, targetLanguage, limit);
   }
 
-  /**
-   * Get all unique languages
-   */
   public async getAllLanguages(): Promise<{ 
     sourceLanguages: string[]; 
     targetLanguages: string[]; 
@@ -157,17 +119,11 @@ class DatabaseManager {
 
   // ===== SEARCH OPERATIONS =====
 
-  /**
-   * Search entries with filters and pagination
-   */
   public async searchEntries(filters: SearchFilters, page = 1, pageSize = 50): Promise<SearchResult> {
     await this.ensureReady();
     return this.searchRepo!.searchEntries(filters, page, pageSize);
   }
 
-  /**
-   * Advanced search with multiple criteria
-   */
   public async advancedSearch(filters: {
     searchTerm?: string;
     sourceLanguage?: string;
@@ -181,9 +137,6 @@ class DatabaseManager {
     return this.searchRepo!.advancedSearch(filters, page, pageSize);
   }
 
-  /**
-   * Search within definitions and examples
-   */
   public async searchContent(
     searchTerm: string,
     sourceLanguage?: string,
@@ -194,9 +147,6 @@ class DatabaseManager {
     return this.searchRepo!.searchContent(searchTerm, sourceLanguage, targetLanguage, limit);
   }
 
-  /**
-   * Get search suggestions
-   */
   public async getSearchSuggestions(
     partialTerm: string,
     sourceLanguage?: string,
@@ -207,9 +157,6 @@ class DatabaseManager {
     return this.searchRepo!.getSearchSuggestions(partialTerm, sourceLanguage, targetLanguage, limit);
   }
 
-  /**
-   * Get entries by part of speech
-   */
   public async getEntriesByPartOfSpeech(
     partOfSpeech: string,
     sourceLanguage?: string,
@@ -221,9 +168,6 @@ class DatabaseManager {
     return this.searchRepo!.getEntriesByPartOfSpeech(partOfSpeech, sourceLanguage, targetLanguage, page, pageSize);
   }
 
-  /**
-   * Get context-aware entries
-   */
   public async getContextAwareEntries(
     sourceLanguage?: string,
     targetLanguage?: string,
@@ -234,9 +178,6 @@ class DatabaseManager {
     return this.searchRepo!.getContextAwareEntries(sourceLanguage, targetLanguage, page, pageSize);
   }
 
-  /**
-   * Get similar entries
-   */
   public async getSimilarEntries(
     headword: string,
     sourceLanguage?: string,
@@ -247,9 +188,6 @@ class DatabaseManager {
     return this.searchRepo!.getSimilarEntries(headword, sourceLanguage, targetLanguage, limit);
   }
 
-  /**
-   * Get search statistics
-   */
   public async getSearchStats(sourceLanguage?: string, targetLanguage?: string): Promise<{
     totalEntries: number;
     contextAwareEntries: number;
@@ -262,41 +200,26 @@ class DatabaseManager {
 
   // ===== CACHE OPERATIONS =====
 
-  /**
-   * Cache a lemma
-   */
   public async cacheLemma(word: string, lemma: string, targetLanguage: string): Promise<void> {
     await this.ensureReady();
     return this.cacheRepo!.cacheLemma(word, lemma, targetLanguage);
   }
 
-  /**
-   * Get cached lemma
-   */
   public async getCachedLemma(word: string, targetLanguage: string): Promise<string | null> {
     await this.ensureReady();
     return this.cacheRepo!.getCachedLemma(word, targetLanguage);
   }
 
-  /**
-   * Clear expired lemma cache
-   */
   public async clearExpiredLemmaCache(): Promise<number> {
     await this.ensureReady();
     return this.cacheRepo!.clearExpiredLemmaCache();
   }
 
-  /**
-   * Clear all lemma cache
-   */
   public async clearLemmaCache(): Promise<void> {
     await this.ensureReady();
     return this.cacheRepo!.clearLemmaCache();
   }
 
-  /**
-   * Get cache statistics
-   */
   public async getCacheStats(): Promise<{
     totalEntries: number;
     expiredEntries: number;
@@ -308,17 +231,11 @@ class DatabaseManager {
 
   // ===== MAINTENANCE OPERATIONS =====
 
-  /**
-   * Run database maintenance
-   */
   public async runMaintenance(): Promise<void> {
     try {
       await this.ensureReady();
       
-      // Run core maintenance
-      this.core.runMaintenance();
-      
-      // Optimize cache
+      await this.core.runMaintenance();
       await this.cacheRepo!.optimizeCache();
       
       console.log('Database maintenance completed successfully');
@@ -327,9 +244,6 @@ class DatabaseManager {
     }
   }
 
-  /**
-   * Get database statistics
-   */
   public async getDatabaseStats(): Promise<{ 
     entryCount: number; 
     meaningCount: number; 
@@ -341,9 +255,6 @@ class DatabaseManager {
     return this.core.getDatabaseStats();
   }
 
-  /**
-   * Get comprehensive database health report
-   */
   public async getDatabaseHealthReport(): Promise<{
     stats: Awaited<ReturnType<DatabaseManager['getDatabaseStats']>>;
     cacheStats: Awaited<ReturnType<DatabaseManager['getCacheStats']>>;
@@ -376,40 +287,31 @@ class DatabaseManager {
     }
   }
 
-  /**
-   * Vacuum database (use sparingly)
-   */
   public async vacuumDatabase(): Promise<void> {
     try {
       await this.ensureReady();
       const db = this.core.getDatabase();
       console.log('Vacuuming database...');
-      db.exec('VACUUM');
+      await db.exec('VACUUM');
       console.log('Database vacuum completed');
     } catch (error) {
       console.error('Error vacuuming database:', error);
     }
   }
 
-  /**
-   * Close database connections
-   */
   public close(): void {
     this.core.close();
   }
 
   // ===== MIGRATION AND SETUP =====
 
-  /**
-   * Check if database needs migration
-   */
   public async checkMigrationNeeded(): Promise<boolean> {
     try {
       await this.ensureReady();
       const db = this.core.getDatabase();
       
-      // Check if new columns exist
-      const tableInfo = db.prepare("PRAGMA table_info(entries)").all() as Array<{name: string}>;
+      const stmt = db.prepare("PRAGMA table_info(entries)");
+      const tableInfo = await stmt.all() as Array<{name: string}>;
       const hasOrderIndex = tableInfo.some(col => col.name === 'order_index');
       
       return !hasOrderIndex;
@@ -419,18 +321,11 @@ class DatabaseManager {
     }
   }
 
-  /**
-   * Run database migrations if needed
-   */
   public async runMigrations(): Promise<void> {
-    // Migrations are now handled automatically in the core initialization
     await this.ensureReady();
     console.log('Database migrations handled during initialization');
   }
 
-  /**
-   * Initialize database with sample data (for development)
-   */
   public async initializeSampleData(): Promise<void> {
     try {
       await this.ensureReady();
@@ -461,7 +356,6 @@ class DatabaseManager {
             }]
           }]
         },
-        // Add more sample entries as needed
       ];
 
       for (const entry of sampleEntries) {

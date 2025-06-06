@@ -1,8 +1,7 @@
 import { DatabaseCore } from '../core';
 
 /**
- * Repository for caching operations
- * Handles lemma cache and search result caching
+ * Repository for caching operations with async support
  */
 export class CacheRepository {
   private core: DatabaseCore;
@@ -10,7 +9,6 @@ export class CacheRepository {
 
   constructor(core: DatabaseCore) {
     this.core = core;
-    // Don't prepare statements immediately - do it lazily
   }
 
   /**
@@ -29,7 +27,7 @@ export class CacheRepository {
   public async cacheLemma(word: string, lemma: string, targetLanguage: string): Promise<void> {
     try {
       const statements = this.getStatements();
-      statements.setCachedLemma.run(word, lemma, targetLanguage);
+      await statements.setCachedLemma.run(word, lemma, targetLanguage);
       console.log('Cached lemma:', word, '→', lemma, 'for', targetLanguage);
     } catch (error) {
       console.error('Error caching lemma:', error);
@@ -42,7 +40,7 @@ export class CacheRepository {
   public async getCachedLemma(word: string, targetLanguage: string): Promise<string | null> {
     try {
       const statements = this.getStatements();
-      const result = statements.getCachedLemma.get(word, targetLanguage) as { lemma: string } | undefined;
+      const result = await statements.getCachedLemma.get(word, targetLanguage) as { lemma: string } | undefined;
       return result ? result.lemma : null;
     } catch (error) {
       console.error('Error getting cached lemma:', error);
@@ -58,7 +56,8 @@ export class CacheRepository {
       const db = this.core.getDatabase();
       
       // Check if expires_at column exists
-      const tableInfo = db.prepare("PRAGMA table_info(lemma_cache)").all() as Array<{name: string}>;
+      const tableInfoStmt = db.prepare("PRAGMA table_info(lemma_cache)");
+      const tableInfo = await tableInfoStmt.all() as Array<{name: string}>;
       const hasExpiresAt = tableInfo.some(col => col.name === 'expires_at');
       
       if (!hasExpiresAt) {
@@ -66,10 +65,11 @@ export class CacheRepository {
         return 0;
       }
       
-      const result = db.prepare(`
+      const stmt = db.prepare(`
         DELETE FROM lemma_cache 
         WHERE expires_at IS NOT NULL AND expires_at < datetime('now')
-      `).run();
+      `);
+      const result = await stmt.run();
       
       if (result.changes > 0) {
         console.log('Cleared', result.changes, 'expired lemma cache entries');
@@ -88,7 +88,8 @@ export class CacheRepository {
   public async clearLemmaCache(): Promise<void> {
     try {
       const db = this.core.getDatabase();
-      db.prepare('DELETE FROM lemma_cache').run();
+      const stmt = db.prepare('DELETE FROM lemma_cache');
+      await stmt.run();
       console.log('Cleared all lemma cache');
     } catch (error) {
       console.error('Error clearing lemma cache:', error);
@@ -106,18 +107,21 @@ export class CacheRepository {
     try {
       const db = this.core.getDatabase();
       
-      const total = db.prepare('SELECT COUNT(*) as count FROM lemma_cache').get() as { count: number };
+      const totalStmt = db.prepare('SELECT COUNT(*) as count FROM lemma_cache');
+      const total = await totalStmt.get() as { count: number };
       
       // Check if expires_at column exists
-      const tableInfo = db.prepare("PRAGMA table_info(lemma_cache)").all() as Array<{name: string}>;
+      const tableInfoStmt = db.prepare("PRAGMA table_info(lemma_cache)");
+      const tableInfo = await tableInfoStmt.all() as Array<{name: string}>;
       const hasExpiresAt = tableInfo.some(col => col.name === 'expires_at');
       
       let expired = { count: 0 };
       if (hasExpiresAt) {
-        expired = db.prepare(`
+        const expiredStmt = db.prepare(`
           SELECT COUNT(*) as count FROM lemma_cache 
           WHERE expires_at IS NOT NULL AND expires_at < datetime('now')
-        `).get() as { count: number };
+        `);
+        expired = await expiredStmt.get() as { count: number };
       }
       
       // Calculate hit rate (simplified - in production, you'd track actual hits/misses)
@@ -142,10 +146,11 @@ export class CacheRepository {
       const db = this.core.getDatabase();
       
       // Remove entries older than maxAge days
-      const result = db.prepare(`
+      const stmt = db.prepare(`
         DELETE FROM lemma_cache 
         WHERE created_at < datetime('now', '-' || ? || ' days')
-      `).run(maxAge);
+      `);
+      const result = await stmt.run(maxAge);
       
       if (result.changes > 0) {
         console.log('Optimized cache: removed', result.changes, 'old entries');
@@ -168,28 +173,32 @@ export class CacheRepository {
       const db = this.core.getDatabase();
       
       // Total entries
-      const total = db.prepare('SELECT COUNT(*) as count FROM lemma_cache').get() as { count: number };
+      const totalStmt = db.prepare('SELECT COUNT(*) as count FROM lemma_cache');
+      const total = await totalStmt.get() as { count: number };
       
       // Old entries (older than 7 days)
-      const old = db.prepare(`
+      const oldStmt = db.prepare(`
         SELECT COUNT(*) as count FROM lemma_cache 
         WHERE created_at < datetime('now', '-7 days')
-      `).get() as { count: number };
+      `);
+      const old = await oldStmt.get() as { count: number };
       
       // Average age in hours
-      const avgAge = db.prepare(`
+      const avgAgeStmt = db.prepare(`
         SELECT AVG((julianday('now') - julianday(created_at)) * 24) as hours 
         FROM lemma_cache
-      `).get() as { hours: number };
+      `);
+      const avgAge = await avgAgeStmt.get() as { hours: number };
       
       // Top languages by cache usage
-      const topLangs = db.prepare(`
+      const topLangsStmt = db.prepare(`
         SELECT target_language as language, COUNT(*) as count 
         FROM lemma_cache 
         GROUP BY target_language 
         ORDER BY count DESC 
         LIMIT 5
-      `).all() as Array<{ language: string; count: number }>;
+      `);
+      const topLangs = await topLangsStmt.all() as Array<{ language: string; count: number }>;
       
       return {
         totalEntries: total.count,
@@ -216,12 +225,13 @@ export class CacheRepository {
       const db = this.core.getDatabase();
       
       // Get most recently used or frequently accessed lemmas
-      const results = db.prepare(`
+      const stmt = db.prepare(`
         SELECT word, lemma, target_language
         FROM lemma_cache 
         ORDER BY created_at DESC 
         LIMIT ?
-      `).all(limit) as Array<{ word: string; lemma: string; target_language: string }>;
+      `);
+      const results = await stmt.all(limit) as Array<{ word: string; lemma: string; target_language: string }>;
       
       const preloadMap = new Map<string, string>();
       results.forEach(row => {
@@ -246,26 +256,20 @@ export class CacheRepository {
     targetLanguage: string;
   }>): Promise<number> {
     try {
-      const db = this.core.getDatabase();
       const statements = this.getStatements();
       
-      // Use a transaction for bulk operations
-      const transaction = db.transaction(() => {
-        let cached = 0;
-        for (const item of lemmas) {
-          try {
-            statements.setCachedLemma.run(item.word, item.lemma, item.targetLanguage);
-            cached++;
-          } catch (error) {
-            console.warn('Failed to cache lemma:', item.word, error);
-          }
+      let cached = 0;
+      for (const item of lemmas) {
+        try {
+          await statements.setCachedLemma.run(item.word, item.lemma, item.targetLanguage);
+          cached++;
+        } catch (error) {
+          console.warn('Failed to cache lemma:', item.word, error);
         }
-        return cached;
-      });
+      }
       
-      const result = transaction();
-      console.log(`Bulk cached ${result} lemmas out of ${lemmas.length} requested`);
-      return result;
+      console.log(`Bulk cached ${cached} lemmas out of ${lemmas.length} requested`);
+      return cached;
     } catch (error) {
       console.error('Error in bulk cache operation:', error);
       return 0;

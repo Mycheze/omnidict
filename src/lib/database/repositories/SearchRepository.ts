@@ -6,8 +6,7 @@ import { EntryRepository } from './EntryRepository';
 type SqlParam = string | number | null;
 
 /**
- * Repository for search operations
- * Handles entry searching with optimization and caching
+ * Repository for search operations with async support
  */
 export class SearchRepository {
   private core: DatabaseCore;
@@ -17,7 +16,6 @@ export class SearchRepository {
   constructor(core: DatabaseCore) {
     this.core = core;
     this.entryRepo = new EntryRepository(core);
-    // Don't prepare statements immediately
   }
 
   /**
@@ -73,7 +71,8 @@ export class SearchRepository {
 
       // Get total count efficiently
       const countQuery = `SELECT COUNT(*) as count ${baseQuery}`;
-      const countResult = db.prepare(countQuery).get(...params) as { count: number };
+      const countStmt = db.prepare(countQuery);
+      const countResult = await countStmt.get(...params) as { count: number };
       const total = countResult.count;
 
       // Build entries efficiently using optimized query
@@ -100,7 +99,8 @@ export class SearchRepository {
         `;
         params.push(pageSize, (page - 1) * pageSize);
 
-        const rows = db.prepare(mainQuery).all(...params) as { id: number }[];
+        const mainStmt = db.prepare(mainQuery);
+        const rows = await mainStmt.all(...params) as { id: number }[];
         
         // Construct entries efficiently
         for (const row of rows) {
@@ -132,11 +132,8 @@ export class SearchRepository {
     offset: number
   ): Promise<DictionaryEntry[]> {
     try {
-      const db = this.core.getDatabase();
-      
-      // Use prepared statement for optimal performance
       const statements = this.getStatements();
-      const rows = statements.searchEntries.all(
+      const rows = await statements.searchEntries.all(
         searchTerm,           // For exact match ranking
         searchTerm,           // For prefix match ranking
         sourceLanguage,       // Source language filter
@@ -240,7 +237,8 @@ export class SearchRepository {
 
       // Get total count
       const countQuery = `SELECT COUNT(*) as count FROM entries ${whereClause}`;
-      const countResult = db.prepare(countQuery).get(...params) as { count: number };
+      const countStmt = db.prepare(countQuery);
+      const countResult = await countStmt.get(...params) as { count: number };
 
       // Get entries with ranking
       let orderBy = 'ORDER BY ';
@@ -265,7 +263,8 @@ export class SearchRepository {
       `;
       params.push(pageSize, (page - 1) * pageSize);
 
-      const rows = db.prepare(mainQuery).all(...params) as { id: number }[];
+      const mainStmt = db.prepare(mainQuery);
+      const rows = await mainStmt.all(...params) as { id: number }[];
       
       const entries: DictionaryEntry[] = [];
       for (const row of rows) {
@@ -324,7 +323,8 @@ export class SearchRepository {
       query += ' ORDER BY e.created_at DESC LIMIT ?';
       params.push(limit);
 
-      const rows = db.prepare(query).all(...params) as Array<{ id: number }>;
+      const stmt = db.prepare(query);
+      const rows = await stmt.all(...params) as Array<{ id: number }>;
       
       const entries: DictionaryEntry[] = [];
       for (const row of rows) {
@@ -372,7 +372,8 @@ export class SearchRepository {
       query += ' ORDER BY headword COLLATE NOCASE LIMIT ?';
       params.push(limit);
 
-      const rows = db.prepare(query).all(...params) as Array<{ headword: string }>;
+      const stmt = db.prepare(query);
+      const rows = await stmt.all(...params) as Array<{ headword: string }>;
       
       return rows.map(row => row.headword);
     } catch (error) {
@@ -425,7 +426,8 @@ export class SearchRepository {
 
       // Get total count
       const countQuery = `SELECT COUNT(*) as count FROM entries ${whereClause}`;
-      const countResult = db.prepare(countQuery).get(...params) as { count: number };
+      const countStmt = db.prepare(countQuery);
+      const countResult = await countStmt.get(...params) as { count: number };
 
       // Get entries
       const mainQuery = `
@@ -435,7 +437,8 @@ export class SearchRepository {
       `;
       params.push(pageSize, (page - 1) * pageSize);
 
-      const rows = db.prepare(mainQuery).all(...params) as { id: number }[];
+      const mainStmt = db.prepare(mainQuery);
+      const rows = await mainStmt.all(...params) as { id: number }[];
       
       const entries: DictionaryEntry[] = [];
       for (const row of rows) {
@@ -498,7 +501,8 @@ export class SearchRepository {
       query += ' ORDER BY headword COLLATE NOCASE LIMIT ?';
       params.push(limit);
 
-      const rows = db.prepare(query).all(...params) as Array<{ id: number }>;
+      const stmt = db.prepare(query);
+      const rows = await stmt.all(...params) as Array<{ id: number }>;
       
       const entries: DictionaryEntry[] = [];
       for (const row of rows) {
@@ -539,24 +543,28 @@ export class SearchRepository {
       }
 
       // Total entries
-      const totalResult = db.prepare(
+      const totalStmt = db.prepare(
         `SELECT COUNT(*) as count FROM entries WHERE ${whereClause}`
-      ).get(...params) as { count: number };
+      );
+      const totalResult = await totalStmt.get(...params) as { count: number };
 
       // Context-aware entries
-      const contextResult = db.prepare(
+      const contextStmt = db.prepare(
         `SELECT COUNT(*) as count FROM entries WHERE ${whereClause} AND has_context = 1`
-      ).get(...params) as { count: number };
+      );
+      const contextResult = await contextStmt.get(...params) as { count: number };
 
       // Recent entries (last 7 days)
-      const recentResult = db.prepare(
+      const recentStmt = db.prepare(
         `SELECT COUNT(*) as count FROM entries WHERE ${whereClause} AND created_at > datetime('now', '-7 days')`
-      ).get(...params) as { count: number };
+      );
+      const recentResult = await recentStmt.get(...params) as { count: number };
 
       // Part of speech breakdown
-      const posResults = db.prepare(
+      const posStmt = db.prepare(
         `SELECT part_of_speech, COUNT(*) as count FROM entries WHERE ${whereClause} GROUP BY part_of_speech`
-      ).all(...params) as Array<{ part_of_speech: string; count: number }>;
+      );
+      const posResults = await posStmt.all(...params) as Array<{ part_of_speech: string; count: number }>;
 
       const partOfSpeechBreakdown: Record<string, number> = {};
       posResults.forEach(result => {
