@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
 import DatabaseManager from '@/lib/database';
 import { ApiResponse, DictionaryEntry } from '@/lib/types';
 
-export async function GET(request: NextRequest) {
+async function getEntryHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const headword = searchParams.get('headword');
@@ -52,3 +53,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, { status: 500 });
   }
 }
+
+// Export the secured handler
+export const GET = withSecurity(getEntryHandler, DEFAULT_SECURITY);

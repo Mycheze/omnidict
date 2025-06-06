@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
 import DatabaseManager from '@/lib/database';
 import AIManager from '@/lib/ai';
 import { ApiResponse, DictionaryEntry } from '@/lib/types';
@@ -9,7 +10,7 @@ interface SimplifiedRegenerateRequest {
   targetLanguage: string;
 }
 
-export async function POST(request: NextRequest) {
+async function regenerateEntryHandler(request: NextRequest) {
   try {
     const { headword, sourceLanguage, targetLanguage }: SimplifiedRegenerateRequest = await request.json();
 
@@ -91,3 +92,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response, { status: 500 });
   }
 }
+
+// Export the secured handler
+export const POST = withSecurity(regenerateEntryHandler, DEFAULT_SECURITY);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Check, X, ExternalLink, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,25 +31,20 @@ export function AnkiSettings() {
   const [showInstructions, setShowInstructions] = useState(false);
   const ankiConnect = new AnkiConnect(); // Uses default proxy endpoint
 
-  // Auto-connect on component mount if enabled
-  useEffect(() => {
-    if (enabled && !connected) {
-      handleTestConnection();
-    }
-  }, [enabled]);
-
-  const handleTestConnection = async () => {
+  const handleTestConnection = useCallback(async () => {
     setIsConnecting(true);
     try {
-      const status = await ankiConnect.testConnection();
+      // Create fresh instance each time - no need to depend on external ankiConnect
+      const ankiConnectInstance = new AnkiConnect();
+      const status = await ankiConnectInstance.testConnection();
       setConnectionStatus(status);
       setConnected(status.connected);
-
+    
       if (status.connected) {
         // Fetch available decks and note types
         const [decks, noteTypes] = await Promise.all([
-          ankiConnect.getDecks(),
-          ankiConnect.getNoteTypes(),
+          ankiConnectInstance.getDecks(),
+          ankiConnectInstance.getNoteTypes(),
         ]);
         
         setAvailableDecks(decks);
@@ -65,7 +60,14 @@ export function AnkiSettings() {
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, [setConnectionStatus, setConnected, setAvailableDecks, setAvailableNoteTypes, setIsConnecting]);
+
+  // Auto-connect on component mount if enabled
+  useEffect(() => {
+    if (enabled && !connected) {
+      handleTestConnection();
+    }
+  }, [enabled, connected, handleTestConnection]);
 
   const handleToggleEnabled = async (newEnabled: boolean) => {
     setEnabled(newEnabled);

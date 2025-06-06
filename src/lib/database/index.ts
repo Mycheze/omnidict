@@ -1,99 +1,27 @@
-import Database from 'better-sqlite3';
-import { createClient } from '@libsql/client';
-import path from 'path';
+import { DatabaseCore } from './core';
+import { EntryRepository } from './repositories/EntryRepository';
+import { SearchRepository } from './repositories/SearchRepository';
+import { CacheRepository } from './repositories/CacheRepository';
 import { 
   DictionaryEntry, 
-  DatabaseEntry, 
-  DatabaseMeaning, 
-  DatabaseExample,
   SearchFilters,
   SearchResult 
 } from '@/lib/types';
 
-// Extended database types to include context fields
-interface ExtendedDatabaseEntry extends DatabaseEntry {
-  has_context?: number;
-  context_sentence?: string;
-}
-
-interface ExtendedDatabaseExample extends DatabaseExample {
-  is_context_sentence?: number;
-}
-
+/**
+ * Main Database Manager
+ * Coordinates between different repositories and provides a unified interface
+ */
 class DatabaseManager {
-  private db: Database.Database | null = null;
-  private turso: any = null;
-  private isUsingTurso: boolean = false;
+  private core: DatabaseCore;
+  private entryRepo: EntryRepository | null = null;
+  private searchRepo: SearchRepository | null = null;
+  private cacheRepo: CacheRepository | null = null;
   private static instance: DatabaseManager;
 
   constructor() {
-    this.initializeDatabase();
-  }
-
-  /**
-   * Initialize database - uses Turso in production, SQLite locally
-   */
-  private initializeDatabase() {
-    // Check if we should use Turso (production)
-    const tursoUrl = process.env.TURSO_DATABASE_URL;
-    const tursoToken = process.env.TURSO_AUTH_TOKEN;
-
-    if (tursoUrl && tursoToken) {
-      // Use Turso for production
-      console.log('Initializing Turso database...');
-      this.turso = createClient({
-        url: tursoUrl,
-        authToken: tursoToken,
-      });
-      this.isUsingTurso = true;
-      console.log('Turso database initialized');
-    } else {
-      // Use local SQLite for development
-      console.log('Initializing local SQLite database...');
-      const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'dictionary.db');
-      
-      // Ensure directory exists
-      const dbDir = path.dirname(dbPath);
-      const fs = require('fs');
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-        console.log('Created database directory:', dbDir);
-      }
-      
-      this.db = new Database(dbPath);
-      this.db.pragma('foreign_keys = ON');
-      this.isUsingTurso = false;
-      console.log('Local SQLite database initialized at:', dbPath);
-    }
-
-    this.createTables();
-  }
-
-  /**
-   * Execute SQL query - works with both Turso and SQLite
-   */
-  private async executeQuery(sql: string, params: any[] = []): Promise<any> {
-    if (this.isUsingTurso) {
-      const result = await this.turso.execute({
-        sql,
-        args: params,
-      });
-      return result;
-    } else {
-      // For local SQLite
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
-        const stmt = this.db!.prepare(sql);
-        return { rows: stmt.all(...params) };
-      } else {
-        const stmt = this.db!.prepare(sql);
-        const result = stmt.run(...params);
-        return { 
-          rows: [],
-          lastInsertRowid: result.lastInsertRowid,
-          changes: result.changes 
-        };
-      }
-    }
+    this.core = DatabaseCore.getInstance();
+    console.log('Database Manager initialized - repositories will be created lazily');
   }
 
   /**
@@ -107,271 +35,55 @@ class DatabaseManager {
   }
 
   /**
-   * Create database tables
+   * Ensure database is initialized and repositories are ready
    */
-  private async createTables(): Promise<void> {
-    const queries = [
-      `CREATE TABLE IF NOT EXISTS entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        headword TEXT NOT NULL,
-        part_of_speech TEXT,
-        source_language TEXT,
-        target_language TEXT,
-        definition_language TEXT,
-        has_context INTEGER DEFAULT 0,
-        context_sentence TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(headword, source_language, target_language, definition_language, has_context, context_sentence)
-      )`,
-      
-      `CREATE TABLE IF NOT EXISTS meanings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        entry_id INTEGER,
-        definition TEXT,
-        noun_type TEXT,
-        verb_type TEXT,
-        comparison TEXT,
-        FOREIGN KEY(entry_id) REFERENCES entries(id) ON DELETE CASCADE
-      )`,
-      
-      `CREATE TABLE IF NOT EXISTS examples (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        meaning_id INTEGER,
-        sentence TEXT,
-        translation TEXT,
-        is_context_sentence INTEGER DEFAULT 0,
-        FOREIGN KEY(meaning_id) REFERENCES meanings(id) ON DELETE CASCADE
-      )`,
-      
-      `CREATE TABLE IF NOT EXISTS lemma_cache (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        word TEXT NOT NULL,
-        lemma TEXT NOT NULL,
-        target_language TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(word, target_language)
-      )`,
-      
-      // Create indexes
-      `CREATE INDEX IF NOT EXISTS idx_headword ON entries(headword)`,
-      `CREATE INDEX IF NOT EXISTS idx_source_language ON entries(source_language)`,
-      `CREATE INDEX IF NOT EXISTS idx_target_language ON entries(target_language)`,
-      `CREATE INDEX IF NOT EXISTS idx_definition_language ON entries(definition_language)`,
-      `CREATE INDEX IF NOT EXISTS idx_has_context ON entries(has_context)`,
-      `CREATE INDEX IF NOT EXISTS idx_context_sentence ON entries(context_sentence)`,
-      `CREATE INDEX IF NOT EXISTS idx_lemma_word ON lemma_cache(word, target_language)`,
-      `CREATE INDEX IF NOT EXISTS idx_is_context_sentence ON examples(is_context_sentence)`
-    ];
-
-    for (const query of queries) {
-      try {
-        await this.executeQuery(query);
-      } catch (error) {
-        console.error('Error creating table:', error);
-      }
+  private async ensureReady(): Promise<void> {
+    await this.core.ensureInitialized();
+    
+    // Initialize repositories lazily
+    if (!this.entryRepo) {
+      this.entryRepo = new EntryRepository(this.core);
+      this.searchRepo = new SearchRepository(this.core);
+      this.cacheRepo = new CacheRepository(this.core);
     }
   }
 
+  // ===== ENTRY OPERATIONS =====
+
   /**
-   * Add a new dictionary entry with context support
+   * Add a new dictionary entry
    */
   public async addEntry(entry: DictionaryEntry): Promise<number | null> {
-    try {
-      // Check if entry already exists
-      const existingQuery = `
-        SELECT id FROM entries 
-        WHERE headword = ? AND source_language = ? AND target_language = ? AND definition_language = ?
-        AND has_context = ? AND COALESCE(context_sentence, '') = ?
-      `;
-      
-      const existingResult = await this.executeQuery(existingQuery, [
-        entry.headword,
-        entry.metadata.source_language,
-        entry.metadata.target_language,
-        entry.metadata.definition_language,
-        entry.metadata.has_context ? 1 : 0,
-        entry.metadata.context_sentence || ''
-      ]);
-
-      if (existingResult.rows && existingResult.rows.length > 0) {
-        return existingResult.rows[0].id;
-      }
-
-      // Insert new entry
-      const partOfSpeech = Array.isArray(entry.part_of_speech) 
-        ? JSON.stringify(entry.part_of_speech) 
-        : entry.part_of_speech;
-
-      const insertEntryQuery = `
-        INSERT INTO entries (headword, part_of_speech, source_language, target_language, definition_language, has_context, context_sentence)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      const entryResult = await this.executeQuery(insertEntryQuery, [
-        entry.headword,
-        partOfSpeech,
-        entry.metadata.source_language,
-        entry.metadata.target_language,
-        entry.metadata.definition_language,
-        entry.metadata.has_context ? 1 : 0,
-        entry.metadata.context_sentence || null
-      ]);
-
-      const entryId = entryResult.lastInsertRowid as number;
-
-      // Insert meanings and examples
-      for (const meaning of entry.meanings) {
-        const meaningQuery = `
-          INSERT INTO meanings (entry_id, definition, noun_type, verb_type, comparison)
-          VALUES (?, ?, ?, ?, ?)
-        `;
-
-        const meaningResult = await this.executeQuery(meaningQuery, [
-          entryId,
-          meaning.definition,
-          meaning.grammar.noun_type || null,
-          meaning.grammar.verb_type || null,
-          meaning.grammar.comparison || null
-        ]);
-
-        const meaningId = meaningResult.lastInsertRowid as number;
-
-        // Insert examples
-        for (const example of meaning.examples) {
-          const exampleQuery = `
-            INSERT INTO examples (meaning_id, sentence, translation, is_context_sentence)
-            VALUES (?, ?, ?, ?)
-          `;
-
-          await this.executeQuery(exampleQuery, [
-            meaningId,
-            example.sentence,
-            example.translation || null,
-            example.is_context_sentence ? 1 : 0
-          ]);
-        }
-      }
-
-      return entryId;
-    } catch (error) {
-      console.error('Error adding entry:', error);
-      return null;
-    }
+    await this.ensureReady();
+    return this.entryRepo!.addEntry(entry);
   }
 
   /**
-   * Get entry by headword and language combination
+   * Get entry by headword
    */
   public async getEntryByHeadword(
     headword: string,
     sourceLanguage?: string,
-    targetLanguage?: string,
-    definitionLanguage?: string
+    targetLanguage?: string
   ): Promise<DictionaryEntry | null> {
-    let query = 'SELECT * FROM entries WHERE headword = ?';
-    const params: any[] = [headword];
-
-    if (sourceLanguage) {
-      query += ' AND source_language = ?';
-      params.push(sourceLanguage);
-    }
-    if (targetLanguage) {
-      query += ' AND target_language = ?';
-      params.push(targetLanguage);
-    }
-    if (definitionLanguage) {
-      query += ' AND definition_language = ?';
-      params.push(definitionLanguage);
-    }
-
-    query += ' ORDER BY created_at DESC LIMIT 1';
-
-    try {
-      const result = await this.executeQuery(query, params);
-      
-      if (!result.rows || result.rows.length === 0) {
-        return null;
-      }
-
-      const entry = result.rows[0] as ExtendedDatabaseEntry;
-      return await this.constructEntryObject(entry.id);
-    } catch (error) {
-      console.error('Error getting entry:', error);
-      return null;
-    }
+    await this.ensureReady();
+    return this.entryRepo!.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
   }
 
   /**
-   * Search entries with filters
+   * Get entry by ID
    */
-  public async searchEntries(filters: SearchFilters, page = 1, pageSize = 50): Promise<SearchResult> {
-    let query = 'SELECT * FROM entries WHERE 1=1';
-    const params: any[] = [];
-
-    if (filters.searchTerm) {
-      query += ' AND headword LIKE ?';
-      params.push(`%${filters.searchTerm}%`);
-    }
-    if (filters.sourceLanguage && filters.sourceLanguage !== 'All') {
-      query += ' AND source_language = ?';
-      params.push(filters.sourceLanguage);
-    }
-    if (filters.targetLanguage && filters.targetLanguage !== 'All') {
-      query += ' AND target_language = ?';
-      params.push(filters.targetLanguage);
-    }
-    if (filters.definitionLanguage && filters.definitionLanguage !== 'All') {
-      query += ' AND definition_language = ?';
-      params.push(filters.definitionLanguage);
-    }
-
-    try {
-      // Get total count
-      const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
-      const countResult = await this.executeQuery(countQuery, params);
-      const total = countResult.rows[0].count;
-
-      // Add pagination
-      query += ' ORDER BY headword COLLATE NOCASE LIMIT ? OFFSET ?';
-      params.push(pageSize, (page - 1) * pageSize);
-
-      const result = await this.executeQuery(query, params);
-      const entries = await Promise.all(
-        result.rows.map(async (row: ExtendedDatabaseEntry) => 
-          await this.constructEntryObject(row.id)
-        )
-      );
-
-      return {
-        entries: entries.filter(Boolean) as DictionaryEntry[],
-        total,
-        page,
-        pageSize
-      };
-    } catch (error) {
-      console.error('Error searching entries:', error);
-      return { entries: [], total: 0, page, pageSize };
-    }
+  public async getEntryById(entryId: number): Promise<DictionaryEntry | null> {
+    await this.ensureReady();
+    return this.entryRepo!.getEntryById(entryId);
   }
 
   /**
-   * Get all unique languages
+   * Update an existing entry
    */
-  public async getAllLanguages(): Promise<{ sourceLanguages: string[], targetLanguages: string[], definitionLanguages: string[] }> {
-    try {
-      const sourceResult = await this.executeQuery('SELECT DISTINCT source_language FROM entries');
-      const targetResult = await this.executeQuery('SELECT DISTINCT target_language FROM entries');
-      const definitionResult = await this.executeQuery('SELECT DISTINCT definition_language FROM entries');
-
-      return {
-        sourceLanguages: sourceResult.rows.map((row: any) => row.source_language).filter(Boolean),
-        targetLanguages: targetResult.rows.map((row: any) => row.target_language).filter(Boolean),
-        definitionLanguages: definitionResult.rows.map((row: any) => row.definition_language).filter(Boolean)
-      };
-    } catch (error) {
-      console.error('Error getting languages:', error);
-      return { sourceLanguages: [], targetLanguages: [], definitionLanguages: [] };
-    }
+  public async updateEntry(entryId: number, entry: DictionaryEntry): Promise<boolean> {
+    await this.ensureReady();
+    return this.entryRepo!.updateEntry(entryId, entry);
   }
 
   /**
@@ -380,155 +92,386 @@ class DatabaseManager {
   public async deleteEntry(
     headword: string,
     sourceLanguage?: string,
-    targetLanguage?: string,
-    definitionLanguage?: string
+    targetLanguage?: string
   ): Promise<boolean> {
-    let query = 'DELETE FROM entries WHERE headword = ?';
-    const params: any[] = [headword];
-
-    if (sourceLanguage) {
-      query += ' AND source_language = ?';
-      params.push(sourceLanguage);
-    }
-    if (targetLanguage) {
-      query += ' AND target_language = ?';
-      params.push(targetLanguage);
-    }
-    if (definitionLanguage) {
-      query += ' AND definition_language = ?';
-      params.push(definitionLanguage);
-    }
-
-    try {
-      const result = await this.executeQuery(query, params);
-      return (result.changes || 0) > 0;
-    } catch (error) {
-      console.error('Error deleting entry:', error);
-      return false;
-    }
+    await this.ensureReady();
+    return this.entryRepo!.deleteEntry(headword, sourceLanguage, targetLanguage);
   }
+
+  /**
+   * Check if an entry exists
+   */
+  public async entryExists(
+    headword: string,
+    sourceLanguage: string,
+    targetLanguage: string
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.entryRepo!.entryExists(headword, sourceLanguage, targetLanguage);
+  }
+
+  /**
+   * Get entry count for a language pair
+   */
+  public async getEntryCount(sourceLanguage: string, targetLanguage: string): Promise<number> {
+    await this.ensureReady();
+    return this.entryRepo!.getEntryCount(sourceLanguage, targetLanguage);
+  }
+
+  /**
+   * Get entries for specific language pair with pagination
+   */
+  public async getEntriesForLanguages(
+    sourceLanguage: string,
+    targetLanguage: string,
+    page = 1,
+    pageSize = 200
+  ): Promise<{ entries: DictionaryEntry[]; total: number }> {
+    await this.ensureReady();
+    return this.entryRepo!.getEntriesForLanguages(sourceLanguage, targetLanguage, page, pageSize);
+  }
+
+  /**
+   * Get recent entries
+   */
+  public async getRecentEntries(
+    sourceLanguage: string,
+    targetLanguage: string,
+    limit = 10
+  ): Promise<DictionaryEntry[]> {
+    await this.ensureReady();
+    return this.entryRepo!.getRecentEntries(sourceLanguage, targetLanguage, limit);
+  }
+
+  /**
+   * Get all unique languages
+   */
+  public async getAllLanguages(): Promise<{ 
+    sourceLanguages: string[]; 
+    targetLanguages: string[]; 
+    definitionLanguages: string[] 
+  }> {
+    await this.ensureReady();
+    return this.entryRepo!.getAllLanguages();
+  }
+
+  // ===== SEARCH OPERATIONS =====
+
+  /**
+   * Search entries with filters and pagination
+   */
+  public async searchEntries(filters: SearchFilters, page = 1, pageSize = 50): Promise<SearchResult> {
+    await this.ensureReady();
+    return this.searchRepo!.searchEntries(filters, page, pageSize);
+  }
+
+  /**
+   * Advanced search with multiple criteria
+   */
+  public async advancedSearch(filters: {
+    searchTerm?: string;
+    sourceLanguage?: string;
+    targetLanguage?: string;
+    partOfSpeech?: string;
+    hasContext?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
+  }, page = 1, pageSize = 50): Promise<SearchResult> {
+    await this.ensureReady();
+    return this.searchRepo!.advancedSearch(filters, page, pageSize);
+  }
+
+  /**
+   * Search within definitions and examples
+   */
+  public async searchContent(
+    searchTerm: string,
+    sourceLanguage?: string,
+    targetLanguage?: string,
+    limit = 50
+  ): Promise<DictionaryEntry[]> {
+    await this.ensureReady();
+    return this.searchRepo!.searchContent(searchTerm, sourceLanguage, targetLanguage, limit);
+  }
+
+  /**
+   * Get search suggestions
+   */
+  public async getSearchSuggestions(
+    partialTerm: string,
+    sourceLanguage?: string,
+    targetLanguage?: string,
+    limit = 10
+  ): Promise<string[]> {
+    await this.ensureReady();
+    return this.searchRepo!.getSearchSuggestions(partialTerm, sourceLanguage, targetLanguage, limit);
+  }
+
+  /**
+   * Get entries by part of speech
+   */
+  public async getEntriesByPartOfSpeech(
+    partOfSpeech: string,
+    sourceLanguage?: string,
+    targetLanguage?: string,
+    page = 1,
+    pageSize = 50
+  ): Promise<SearchResult> {
+    await this.ensureReady();
+    return this.searchRepo!.getEntriesByPartOfSpeech(partOfSpeech, sourceLanguage, targetLanguage, page, pageSize);
+  }
+
+  /**
+   * Get context-aware entries
+   */
+  public async getContextAwareEntries(
+    sourceLanguage?: string,
+    targetLanguage?: string,
+    page = 1,
+    pageSize = 50
+  ): Promise<SearchResult> {
+    await this.ensureReady();
+    return this.searchRepo!.getContextAwareEntries(sourceLanguage, targetLanguage, page, pageSize);
+  }
+
+  /**
+   * Get similar entries
+   */
+  public async getSimilarEntries(
+    headword: string,
+    sourceLanguage?: string,
+    targetLanguage?: string,
+    limit = 5
+  ): Promise<DictionaryEntry[]> {
+    await this.ensureReady();
+    return this.searchRepo!.getSimilarEntries(headword, sourceLanguage, targetLanguage, limit);
+  }
+
+  /**
+   * Get search statistics
+   */
+  public async getSearchStats(sourceLanguage?: string, targetLanguage?: string): Promise<{
+    totalEntries: number;
+    contextAwareEntries: number;
+    partOfSpeechBreakdown: Record<string, number>;
+    recentEntries: number;
+  }> {
+    await this.ensureReady();
+    return this.searchRepo!.getSearchStats(sourceLanguage, targetLanguage);
+  }
+
+  // ===== CACHE OPERATIONS =====
 
   /**
    * Cache a lemma
    */
   public async cacheLemma(word: string, lemma: string, targetLanguage: string): Promise<void> {
-    try {
-      const query = `
-        INSERT OR IGNORE INTO lemma_cache (word, lemma, target_language)
-        VALUES (?, ?, ?)
-      `;
-      await this.executeQuery(query, [word, lemma, targetLanguage]);
-    } catch (error) {
-      console.error('Error caching lemma:', error);
-    }
+    await this.ensureReady();
+    return this.cacheRepo!.cacheLemma(word, lemma, targetLanguage);
   }
 
   /**
    * Get cached lemma
    */
   public async getCachedLemma(word: string, targetLanguage: string): Promise<string | null> {
-    try {
-      const query = `
-        SELECT lemma FROM lemma_cache 
-        WHERE word = ? AND target_language = ?
-      `;
-      const result = await this.executeQuery(query, [word, targetLanguage]);
-
-      if (result.rows && result.rows.length > 0) {
-        return result.rows[0].lemma;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting cached lemma:', error);
-      return null;
-    }
+    await this.ensureReady();
+    return this.cacheRepo!.getCachedLemma(word, targetLanguage);
   }
 
   /**
-   * Clear lemma cache
+   * Clear expired lemma cache
+   */
+  public async clearExpiredLemmaCache(): Promise<number> {
+    await this.ensureReady();
+    return this.cacheRepo!.clearExpiredLemmaCache();
+  }
+
+  /**
+   * Clear all lemma cache
    */
   public async clearLemmaCache(): Promise<void> {
+    await this.ensureReady();
+    return this.cacheRepo!.clearLemmaCache();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  public async getCacheStats(): Promise<{
+    totalEntries: number;
+    expiredEntries: number;
+    cacheHitRate: number;
+  }> {
+    await this.ensureReady();
+    return this.cacheRepo!.getCacheStats();
+  }
+
+  // ===== MAINTENANCE OPERATIONS =====
+
+  /**
+   * Run database maintenance
+   */
+  public async runMaintenance(): Promise<void> {
     try {
-      await this.executeQuery('DELETE FROM lemma_cache');
+      await this.ensureReady();
+      
+      // Run core maintenance
+      this.core.runMaintenance();
+      
+      // Optimize cache
+      await this.cacheRepo!.optimizeCache();
+      
+      console.log('Database maintenance completed successfully');
     } catch (error) {
-      console.error('Error clearing lemma cache:', error);
+      console.error('Error during database maintenance:', error);
     }
   }
 
   /**
-   * Construct a complete entry object from database rows
+   * Get database statistics
    */
-  private async constructEntryObject(entryId: number): Promise<DictionaryEntry | null> {
+  public async getDatabaseStats(): Promise<{ 
+    entryCount: number; 
+    meaningCount: number; 
+    exampleCount: number; 
+    dbSize: string;
+    cacheSize: number;
+  }> {
+    await this.ensureReady();
+    return this.core.getDatabaseStats();
+  }
+
+  /**
+   * Get comprehensive database health report
+   */
+  public async getDatabaseHealthReport(): Promise<{
+    stats: Awaited<ReturnType<DatabaseManager['getDatabaseStats']>>;
+    cacheStats: Awaited<ReturnType<DatabaseManager['getCacheStats']>>;
+    languageBreakdown: Awaited<ReturnType<DatabaseManager['getAllLanguages']>>;
+    recentActivity: {
+      totalEntries: number;
+      contextAwareEntries: number;
+      recentEntries: number;
+    };
+  }> {
     try {
-      // Get entry details
-      const entryResult = await this.executeQuery('SELECT * FROM entries WHERE id = ?', [entryId]);
-      if (!entryResult.rows || entryResult.rows.length === 0) return null;
-
-      const entry = entryResult.rows[0] as ExtendedDatabaseEntry;
-
-      // Get meanings
-      const meaningsResult = await this.executeQuery('SELECT * FROM meanings WHERE entry_id = ?', [entryId]);
+      await this.ensureReady();
       
-      const entryMeanings = await Promise.all(
-        meaningsResult.rows.map(async (meaning: DatabaseMeaning) => {
-          // Get examples for this meaning
-          const examplesResult = await this.executeQuery('SELECT * FROM examples WHERE meaning_id = ?', [meaning.id]);
-
-          return {
-            definition: meaning.definition,
-            grammar: {
-              noun_type: meaning.noun_type || undefined,
-              verb_type: meaning.verb_type || undefined,
-              comparison: meaning.comparison || undefined,
-            },
-            examples: examplesResult.rows.map((example: ExtendedDatabaseExample) => ({
-              sentence: example.sentence,
-              translation: example.translation || undefined,
-              is_context_sentence: Boolean(example.is_context_sentence),
-            })),
-          };
-        })
-      );
-
-      // Parse part_of_speech
-      let partOfSpeech: string | string[];
-      if (entry.part_of_speech) {
-        try {
-          const parsed = JSON.parse(entry.part_of_speech);
-          partOfSpeech = parsed;
-        } catch {
-          partOfSpeech = entry.part_of_speech;
-        }
-      } else {
-        partOfSpeech = 'unknown';
-      }
+      const [stats, cacheStats, languageBreakdown, recentActivity] = await Promise.all([
+        this.getDatabaseStats(),
+        this.getCacheStats(),
+        this.getAllLanguages(),
+        this.searchRepo!.getSearchStats()
+      ]);
 
       return {
-        metadata: {
-          source_language: entry.source_language,
-          target_language: entry.target_language,
-          definition_language: entry.definition_language,
-          has_context: Boolean(entry.has_context),
-          context_sentence: entry.context_sentence || undefined,
-        },
-        headword: entry.headword,
-        part_of_speech: partOfSpeech,
-        meanings: entryMeanings,
+        stats,
+        cacheStats,
+        languageBreakdown,
+        recentActivity
       };
     } catch (error) {
-      console.error('Error constructing entry object:', error);
-      return null;
+      console.error('Error generating database health report:', error);
+      throw error;
     }
   }
 
   /**
-   * Close database connection
+   * Vacuum database (use sparingly)
+   */
+  public async vacuumDatabase(): Promise<void> {
+    try {
+      await this.ensureReady();
+      const db = this.core.getDatabase();
+      console.log('Vacuuming database...');
+      db.exec('VACUUM');
+      console.log('Database vacuum completed');
+    } catch (error) {
+      console.error('Error vacuuming database:', error);
+    }
+  }
+
+  /**
+   * Close database connections
    */
   public close(): void {
-    if (this.db) {
-      this.db.close();
+    this.core.close();
+  }
+
+  // ===== MIGRATION AND SETUP =====
+
+  /**
+   * Check if database needs migration
+   */
+  public async checkMigrationNeeded(): Promise<boolean> {
+    try {
+      await this.ensureReady();
+      const db = this.core.getDatabase();
+      
+      // Check if new columns exist
+      const tableInfo = db.prepare("PRAGMA table_info(entries)").all() as Array<{name: string}>;
+      const hasOrderIndex = tableInfo.some(col => col.name === 'order_index');
+      
+      return !hasOrderIndex;
+    } catch (error) {
+      console.error('Error checking migration status:', error);
+      return false;
     }
-    // Turso client doesn't need explicit closing
+  }
+
+  /**
+   * Run database migrations if needed
+   */
+  public async runMigrations(): Promise<void> {
+    // Migrations are now handled automatically in the core initialization
+    await this.ensureReady();
+    console.log('Database migrations handled during initialization');
+  }
+
+  /**
+   * Initialize database with sample data (for development)
+   */
+  public async initializeSampleData(): Promise<void> {
+    try {
+      await this.ensureReady();
+      const existingCount = await this.getEntryCount('English', 'Czech');
+      
+      if (existingCount > 0) {
+        console.log('Database already has entries, skipping sample data');
+        return;
+      }
+
+      console.log('Adding sample data to database...');
+      
+      const sampleEntries: DictionaryEntry[] = [
+        {
+          metadata: {
+            source_language: 'English',
+            target_language: 'Czech',
+            definition_language: 'English',
+          },
+          headword: 'hello',
+          part_of_speech: 'interjection',
+          meanings: [{
+            definition: 'A greeting used when meeting someone or answering the phone',
+            grammar: {},
+            examples: [{
+              sentence: 'Ahoj, jak se máš?',
+              translation: 'Hello, how are you?',
+            }]
+          }]
+        },
+        // Add more sample entries as needed
+      ];
+
+      for (const entry of sampleEntries) {
+        await this.addEntry(entry);
+      }
+
+      console.log(`Added ${sampleEntries.length} sample entries`);
+    } catch (error) {
+      console.error('Error initializing sample data:', error);
+    }
   }
 }
 

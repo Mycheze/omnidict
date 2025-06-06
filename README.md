@@ -74,25 +74,37 @@ MIT License - see LICENSE file for details
 # Todo List
 
 ## Features
-- [ ] Settings!
- - [x] Language managing
- - [x] Anki config
- - [ ] Model changing
- - [ ] Text size or font changing?
-- [x] Anki exporting
-- [x] Context aware searching
+- [ ] AI Model changing
+- [ ] Text size or font changing
+- [ ] Individual settings saved (cookies) (I think this works already)
 - [ ] Clipboard monitoring
-- [x] Async searching
-- [ ] Anki settings PER language
-- [ ] Extensive testing
+- [ ] Can Anki work on the web version? Extension maybe?
+- [ ] Tutorial video!
+- [ ] Elevenlabs audio generation and storage
+- [ ] Entry editing (for small changes)
+- [ ] Human notes on entries
+- [ ] Mobile optimization (UI)
+- [ ] Dialect configuration
+- [ ] Phrase adding
+- [ ] Admin mode to purge parts of the database (remove a language entierly)
+- [ ] Dark mode
 
 ## Bugs
 - [ ] Recents show non-matching language pairs
-- [ ] Slow-ish UI?
 - [ ] Part of speech is always in English
 - [ ] Clicking on an entry clears the filter (it should stay and have a little x to clear)
 - [ ] Duplicate entry adding (I don't think it generates new entries, but it doubles up in the list)
-
+- [ ] Asian languages often don't get translations
+- [ ] Searching the word in a non-English native language causes problems
+- [ ] Unintuitive naming "From" and "To" should be Base and Target language
+- [ ] List of added languages is super messy (and non standardized)
+- [ ] Opening an old entry isn't instant
+- [ ] Typing lag
+- [ ] DB loading lag
+- [ ] Context aware search is a centered weird in it's box
+- [ ] Errors (need to monitor that)
+- [ ] On mobile, adding a language adds in reverse?
+- [ ] Language verification is broken
 
 
 # Instructions

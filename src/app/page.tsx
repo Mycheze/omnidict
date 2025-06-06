@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Search, BookOpen, Settings, History, ArrowRight, Sparkles } from 'lucide-react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Search, BookOpen, Settings, History, ArrowRight, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,136 +9,226 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import { ApiQueueStatus } from '@/components/ApiQueueStatus';
 import { SettingsModal } from '@/components/SettingsModal';
 import { AnkiExportButton } from '@/components/anki/AnkiExportButton';
-import { useDictionary } from '@/hooks/useDictionary';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useSettingsStore } from '@/stores/settingsStore';
-import { useDictionaryStore } from '@/stores/dictionaryStore';
-import { useAnkiAutoConnect } from '@/hooks/useAnkiAutoConnect';
 import { ContextSearch } from '@/components/ContextSearch';
+import { useImmediateDebounce } from '@/hooks/shared/useDebounce';
+// STEP 1: Settings store ✅
+import { useSettingsStore } from '@/stores/settingsStore';
+// STEP 2: Dictionary store ✅  
+import { useDictionaryStore } from '@/stores/dictionaryStore';
+// STEP 3: Dictionary hook ✅
+import { useDictionary } from '@/hooks/dictionary/useDictionary';
+// STEP 4: Add Anki auto-connect
+import { useAnkiAutoConnect } from '@/hooks/useAnkiAutoConnect';
 
 export default function DictionaryPage() {
-  const [searchTerm, setSearchTerm] = useState('');
+  console.log('🚀 DictionaryPage rendering - Step 4: Auto-loading effects added');
+
+  // LOCAL STATE
   const [newWord, setNewWord] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  const { languages, updateLanguages } = useSettingsStore();
-  const { context, clearContext } = useDictionaryStore(); // Add clearContext here
-  
+  // STEP 4: Use immediate debounce to eliminate typing lag  
+  const [searchInput, setSearchInput] = useState('');
+  const [, searchTerm] = useImmediateDebounce(searchInput, 300);
+
+  // STEP 4: Refs for tracking initialization to prevent loops
+  const hasInitialized = useRef(false);
+  const currentLanguagePair = useRef('');
+
+  // STEP 1: Settings store ✅
+  const languages = useSettingsStore(useCallback((state) => state.languages, []));
+  const updateLanguages = useSettingsStore(useCallback((state) => state.updateLanguages, []));
+
+  // STEP 2: Dictionary store ✅  
+  const entries = useDictionaryStore((state) => state.entries);
+  const currentEntry = useDictionaryStore((state) => state.currentEntry);
+  const searchResults = useDictionaryStore((state) => state.searchResults);
+  const loading = useDictionaryStore((state) => state.loading);
+  const error = useDictionaryStore((state) => state.error);
+  const allEntriesLoaded = useDictionaryStore((state) => state.allEntriesLoaded);
+  const context = useDictionaryStore((state) => state.context);
+  const clearContext = useDictionaryStore(useCallback((state) => state.clearContext, []));
+
+  // STEP 3: Dictionary hook ✅
   const {
-    entries,
-    currentEntry,
-    recentEntries,
-    searchResults,
-    searchLoading,
-    loading,
-    error,
-    allEntriesLoaded,
     searchEntries,
     getEntry,
     createEntry,
-    createContextualEntry,
     regenerateEntry,
     deleteEntry,
-    loadAllEntries,
+    createContextualEntry,
+    searchLoading,
+    loadAllEntriesOptimized,
     resetForLanguageChange,
+    getFilteredRecentEntries,
+    getEntriesForCurrentLanguages,
   } = useDictionary();
 
-  // Auto-connect to Anki if previously configured
+  // STEP 4: Auto-connect to Anki if previously configured
   useAnkiAutoConnect();
 
-  // Debounce search term for auto-search
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  console.log('🔍 Dictionary store state:');
+  console.log('  - Entries count:', entries.length);
+  console.log('  - Current entry:', currentEntry?.headword || 'none');
+  console.log('  - Loading:', loading);
+  console.log('  - All entries loaded:', allEntriesLoaded);
+  console.log('  - Search loading:', searchLoading);
+  console.log('  - Error:', error);
 
-  // Load all entries when component mounts
+  // STEP 4: Create stable language pair string for optimization
+  const languagePair = useMemo(() => 
+    `${languages.sourceLanguage}-${languages.targetLanguage}`, 
+    [languages.sourceLanguage, languages.targetLanguage]
+  );
+
+  // STEP 4: CRITICAL - Fixed search effect that doesn't cause input lag
   useEffect(() => {
-    if (!allEntriesLoaded) {
-      loadAllEntries();
+    if (searchTerm.trim()) {
+      console.log('🔍 Searching for:', searchTerm);
+      searchEntries(searchTerm);
+    } else {
+      // Clear search results when search term is empty
+      searchEntries('');
     }
-  }, [loadAllEntries, allEntriesLoaded]);
+  }, [searchTerm, searchEntries]);
 
-  // Handle language changes
+  // STEP 4: CRITICAL - Single initialization effect with proper dependency management
   useEffect(() => {
-    resetForLanguageChange();
-    loadAllEntries();
-  }, [languages.sourceLanguage, languages.targetLanguage, resetForLanguageChange, loadAllEntries]);
+  console.log('🔍 Effect RUNNING with deps:', {
+    languagePair,
+    loading,
+    allEntriesLoaded,
+    hasInitialized: hasInitialized.current,
+    currentPair: currentLanguagePair.current
+  });
 
-  // Auto-search when debounced term changes
-  useEffect(() => {
-    searchEntries(debouncedSearchTerm);
-  }, [debouncedSearchTerm, searchEntries]);
-
-  const handleSearchEntry = (headword: string, isFromSearch = false) => {
-    getEntry(headword, isFromSearch);
-    if (isFromSearch) {
-      setSearchTerm(''); // Clear search term if it was from search
+    const needsInitialization = !hasInitialized.current || 
+                               currentLanguagePair.current !== languagePair;
+    
+    if (needsInitialization && !loading) {
+      console.log('🚀 Initializing dictionary for:', languagePair);
+      
+      hasInitialized.current = true;
+      
+      // Reset if language pair changed
+      if (currentLanguagePair.current !== languagePair) {
+        console.log('🌐 Language pair changed, resetting...');
+        currentLanguagePair.current = languagePair;
+        resetForLanguageChange();
+      }
+      
+      // Load entries if not already loaded
+      if (!allEntriesLoaded) {
+        console.log('📚 Loading entries...');
+        setTimeout(() => {
+          loadAllEntriesOptimized();
+        }, 0);
+      }
     }
-  };
+  }, [languagePair, loading, allEntriesLoaded, resetForLanguageChange, loadAllEntriesOptimized]);
 
-  const handleCreateNewEntry = () => {
+  // STEP 4: Optimized filtering with proper memoization and language filtering
+  const { filteredEntries, recentEntries } = useMemo(() => {
+    const filtered = getEntriesForCurrentLanguages();
+    const recent = getFilteredRecentEntries();
+
+    return { filteredEntries: filtered, recentEntries: recent };
+  }, [getEntriesForCurrentLanguages, getFilteredRecentEntries]);
+
+  // STEP 4: Get entries to display based on search with memoization
+  const entriesToShow = useMemo(() => {
+    return searchTerm.trim() ? searchResults.entries : filteredEntries;
+  }, [searchTerm, searchResults.entries, filteredEntries]);
+
+  console.log('📊 Computed data:');
+  console.log('  - Filtered entries:', filteredEntries.length);
+  console.log('  - Recent entries:', recentEntries.length);
+  console.log('  - Entries to show:', entriesToShow.length);
+  console.log('  - Language pair:', languagePair);
+  console.log('  - Has initialized:', hasInitialized.current);
+
+  // STEP 3: REAL HANDLERS ✅
+  const handleSearchEntry = useCallback((headword: string) => {
+    console.log('🔍 Search entry clicked:', headword);
+    getEntry(headword, false); // Don't mark as searched
+  }, [getEntry]);
+
+  const handleCreateNewEntry = useCallback(() => {
     if (!newWord.trim()) return;
-    
-    // Visual feedback
+    console.log('➕ Creating new entry:', newWord);
     setIsSubmitting(true);
-    
-    // Clear input immediately for better UX
     const wordToCreate = newWord.trim();
     setNewWord('');
-    setSearchTerm('');
     
-    // Create the entry (async via queue)
     createEntry(wordToCreate);
-    
-    // Reset submit state after a short delay
     setTimeout(() => setIsSubmitting(false), 500);
-  };
+  }, [newWord, createEntry]);
 
-  // Context-aware word selection - puts word in the regular input
-  const handleWordSelectFromContext = (word: string) => {
+  const handleWordSelectFromContext = useCallback((word: string) => {
     setNewWord(word);
-  };
+  }, []);
 
-  // Context-aware search - creates entry and clears context
-  const handleContextualSearch = (word: string, contextSentence: string) => {
-    // Visual feedback
+  const handleContextualSearch = useCallback((word: string, contextSentence: string) => {
+    console.log('🎯 Contextual search:', word, 'in context:', contextSentence);
     setIsSubmitting(true);
-    
-    // Clear inputs
     setNewWord('');
-    setSearchTerm('');
     
-    // Create contextual entry
     createContextualEntry(word, contextSentence);
-    
-    // Clear the context sentence after search
     clearContext();
     
-    // Reset submit state after a short delay
     setTimeout(() => setIsSubmitting(false), 500);
-  };
+  }, [createContextualEntry, clearContext]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleCreateNewEntry();
     }
-  };
+  }, [handleCreateNewEntry]);
 
-  // Filter entries based on current language settings
-  const filteredEntries = entries.filter(entry => 
-    entry.metadata.source_language === languages.sourceLanguage &&
-    entry.metadata.target_language === languages.targetLanguage
-  );
-
-  // Get entries to display based on search
-  const entriesToShow = searchTerm.trim() ? searchResults.entries : filteredEntries;
-
-  const handleLanguageChange = (type: 'source' | 'target', value: string) => {
+  // STEP 4: Real language change handler with reset
+  const handleLanguageChange = useCallback((type: 'source' | 'target', value: string) => {
+    console.log('🌐 Language change triggered:', type, value);
+    
     if (type === 'source') {
       updateLanguages({ sourceLanguage: value });
     } else {
       updateLanguages({ targetLanguage: value });
     }
-  };
+    
+    // Reset initialization flag so the effect can run again
+    hasInitialized.current = false;
+  }, [updateLanguages]);
+
+  const handleRegenerateEntry = useCallback(() => {
+    if (currentEntry) {
+      console.log('🔄 Regenerating entry:', currentEntry.headword);
+      regenerateEntry(currentEntry.headword);
+    }
+  }, [currentEntry, regenerateEntry]);
+
+  const handleDeleteEntry = useCallback(() => {
+    if (currentEntry) {
+      console.log('🗑️ Deleting entry:', currentEntry.headword);
+      deleteEntry(currentEntry.headword);
+    }
+  }, [currentEntry, deleteEntry]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+  }, []);
+
+  const darkMode = useSettingsStore((state) => state.preferences.darkMode);
+  const updatePreferences = useSettingsStore((state) => state.updatePreferences);
+
+  // Apply dark mode class
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -147,12 +237,12 @@ export default function DictionaryPage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <BookOpen className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold">Deep Dict</h1>
+            <h1 className="text-2xl font-bold">Omnidict</h1>
           </div>
           
           <div className="flex items-center space-x-3">
             <LanguageSelector
-              label="From"
+              label="Base"
               value={languages.sourceLanguage}
               type="source"
               onChange={(value) => handleLanguageChange('source', value)}
@@ -161,12 +251,21 @@ export default function DictionaryPage() {
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
             
             <LanguageSelector
-              label="To"
+              label="Target"
               value={languages.targetLanguage}
               type="target"
               onChange={(value) => handleLanguageChange('target', value)}
             />
-            
+
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => updatePreferences({ darkMode: !darkMode })}
+              title="Toggle dark mode"
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </Button>
+
             <Button 
               variant="ghost" 
               size="sm"
@@ -181,9 +280,9 @@ export default function DictionaryPage() {
 
       <div className="container mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - NO ContextSearch here anymore */}
+          {/* Left Panel */}
           <div className="space-y-4">
-            {/* Recent Lookups */}
+            {/* STEP 4: Recent Lookups - FIXED: Only show for current language */}
             {recentEntries.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -194,10 +293,10 @@ export default function DictionaryPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-1">
-                    {recentEntries.map((entry) => (
+                    {recentEntries.map((entry, index) => (
                       <button
-                        key={`recent-${entry.headword}-${entry.metadata.source_language}-${entry.metadata.target_language}`}
-                        onClick={() => handleSearchEntry(entry.headword, false)}
+                        key={`recent-${entry.headword}-${index}`}
+                        onClick={() => handleSearchEntry(entry.headword)}
                         className="w-full text-left p-2 rounded hover:bg-muted transition-colors border-l-2 border-primary bg-primary/5"
                       >
                         <div className="font-medium">{entry.headword}</div>
@@ -213,7 +312,7 @@ export default function DictionaryPage() {
               </Card>
             )}
 
-            {/* Search existing entries */}
+            {/* STEP 4: Search with immediate response - no lag */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Filter Dictionary</CardTitle>
@@ -223,10 +322,21 @@ export default function DictionaryPage() {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Filter entries..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchInput} // Immediate value - no lag!
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-10"
                   />
+                  {searchInput.trim() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearSearch}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                      title="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
                 
                 {searchLoading && (
@@ -254,16 +364,15 @@ export default function DictionaryPage() {
                 <div className="space-y-1 max-h-96 overflow-y-auto">
                   {loading && !allEntriesLoaded && (
                     <div className="text-sm text-muted-foreground p-4 text-center">
-                      Loading dictionary...
+                      Loading dictionary... ({filteredEntries.length} loaded)
                     </div>
                   )}
                   
-                  {/* All Entries */}
                   {entriesToShow.length > 0 ? (
-                    entriesToShow.map((entry) => (
+                    entriesToShow.map((entry, index) => (
                       <button
-                        key={`entry-${entry.headword}-${entry.metadata.source_language}-${entry.metadata.target_language}`}
-                        onClick={() => handleSearchEntry(entry.headword, searchTerm.trim().length > 0)}
+                        key={`entry-${entry.headword}-${index}`}
+                        onClick={() => handleSearchEntry(entry.headword)}
                         className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
                       >
                         <div className="font-medium">{entry.headword}</div>
@@ -326,7 +435,7 @@ export default function DictionaryPage() {
                     {/* Meanings */}
                     <div className="space-y-6">
                       {currentEntry.meanings.map((meaning, index) => (
-                        <div key={index} className="space-y-3">
+                        <div key={`meaning-${index}`} className="space-y-3">
                           <div className="dictionary-definition">
                             {index + 1}. {meaning.definition}
                           </div>
@@ -352,9 +461,9 @@ export default function DictionaryPage() {
                             </div>
                           )}
 
-                          {/* Examples with Export Buttons and context highlighting */}
+                          {/* Examples with Export Buttons */}
                           {meaning.examples.map((example, exampleIndex) => (
-                            <div key={exampleIndex} className={`dictionary-example relative group ${
+                            <div key={`example-${index}-${exampleIndex}`} className={`dictionary-example relative group ${
                               example.is_context_sentence ? 'bg-green-100 border-green-300' : ''
                             }`}>
                               <div className="flex items-start justify-between">
@@ -372,7 +481,6 @@ export default function DictionaryPage() {
                                   )}
                                 </div>
                                 
-                                {/* Export Button */}
                                 <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <AnkiExportButton
                                     context={{
@@ -397,14 +505,14 @@ export default function DictionaryPage() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => regenerateEntry(currentEntry.headword)}
+                        onClick={handleRegenerateEntry}
                       >
                         🔄 Regenerate
                       </Button>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => deleteEntry(currentEntry.headword)}
+                        onClick={handleDeleteEntry}
                       >
                         🗑️ Delete
                       </Button>
@@ -447,14 +555,10 @@ export default function DictionaryPage() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   Learning: {languages.sourceLanguage} → {languages.targetLanguage}
-                  {context.isContextMode && (
-                    <span className="ml-2 text-purple-600 font-medium">
-                      • Context mode active
-                    </span>
-                  )}
                 </p>
               </CardContent>
             </Card>
+
             {/* Context-Aware Search */}
             <div className="mt-6">
               <ContextSearch

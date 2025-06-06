@@ -1,0 +1,26 @@
+Error: Encountered two children with the same key, `entry-rej-English-Czech`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+    at createConsoleError (http://localhost:3200/_next/static/chunks/node_modules_next_dist_client_8f19e6fb._.js:882:71)
+    at handleConsoleError (http://localhost:3200/_next/static/chunks/node_modules_next_dist_client_8f19e6fb._.js:1058:54)
+    at console.error (http://localhost:3200/_next/static/chunks/node_modules_next_dist_client_8f19e6fb._.js:1223:57)
+    at http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:5698:33
+    at runWithFiberInDEV (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:3073:74)
+    at warnOnInvalidKey (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:5697:21)
+    at reconcileChildrenArray (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:5714:29)
+    at reconcileChildFibersImpl (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:5829:117)
+    at http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:5856:39
+    at reconcileChildren (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:7439:119)
+    at beginWork (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:8219:24)
+    at runWithFiberInDEV (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:3073:74)
+    at performUnitOfWork (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10243:97)
+    at workLoopSync (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10135:40)
+    at renderRootSync (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10118:13)
+    at performWorkOnRoot (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:9853:212)
+    at performSyncWorkOnRoot (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10834:9)
+    at flushSyncWorkAcrossRoots_impl (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10754:316)
+    at processRootScheduleInMicrotask (http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10774:106)
+    at http://localhost:3200/_next/static/chunks/node_modules_next_dist_compiled_2ce9398a._.js:10845:158
+    at button (<anonymous>)
+    at http://localhost:3200/_next/static/chunks/src_1ba9f1f3._.js:5740:309
+    at Array.map (<anonymous>)
+    at DictionaryPage (http://localhost:3200/_next/static/chunks/src_1ba9f1f3._.js:5740:94)
+    at ClientPageRoot (http://localhost:3200/_next/static/chunks/node_modules_next_dist_1a6ee436._.js:2061:50)

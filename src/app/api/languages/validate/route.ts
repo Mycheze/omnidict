@@ -1,40 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import AIManager from '@/lib/ai';
-import { ApiResponse, LanguageValidationRequest, LanguageValidationResponse } from '@/lib/types';
+import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
+import { validateLanguageRequest } from '@/lib/security/validation';
+import { DictionaryService } from '@/lib/services/DictionaryService';
+import { ApiResponse, LanguageValidationResponse } from '@/lib/types';
 
-export async function POST(request: NextRequest) {
+async function validateLanguageHandler(request: NextRequest) {
+  // Validate and sanitize input
+  const rawBody = await request.json();
+  const { inputLanguage } = validateLanguageRequest(rawBody);
+
+  if (!inputLanguage || !inputLanguage.trim()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Language input is required',
+    };
+    return NextResponse.json(response, { status: 400 });
+  }
+
+  console.log('Validating language:', inputLanguage);
+
+  const dictionaryService = DictionaryService.getInstance();
+
   try {
-    const { inputLanguage }: LanguageValidationRequest = await request.json();
+    const result = await dictionaryService.validateLanguage(inputLanguage.trim());
 
-    if (!inputLanguage || !inputLanguage.trim()) {
+    if (!result.success) {
       const response: ApiResponse = {
         success: false,
-        error: 'Language input is required',
+        error: result.error || 'Language validation failed',
       };
-      return NextResponse.json(response, { status: 400 });
+      return NextResponse.json(response, { status: 500 });
     }
 
-    console.log('Validating language:', inputLanguage);
-
-    const ai = AIManager.getInstance();
-    const result = await ai.validateLanguage(inputLanguage.trim());
-
-    console.log('Language validation result:', result);
+    console.log('Language validation result:', result.result);
 
     const response: ApiResponse<LanguageValidationResponse> = {
       success: true,
-      data: result,
+      data: result.result!,
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in language validation API:', error);
+    console.error('Error in validateLanguageHandler:', error);
     
     const response: ApiResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to validate language',
+      error: 'Internal server error',
     };
 
     return NextResponse.json(response, { status: 500 });
   }
 }
+
+// Export the secured handler
+export const POST = withSecurity(validateLanguageHandler, {
+  ...DEFAULT_SECURITY,
+  rateLimit: { maxRequests: 30, windowMs: 60000 }, // Stricter for AI validation
+});
