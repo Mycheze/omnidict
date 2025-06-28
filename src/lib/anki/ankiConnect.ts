@@ -299,7 +299,7 @@ export class AnkiConnect {
       '3. Make sure Anki is running',
       '4. Configure CORS in AnkiConnect settings:',
       '   - Tools → Add-ons → AnkiConnect → Config',
-      '   - Add your domain to webCorsOriginList',
+      '   - Add this domain to webCorsOriginList: https://omnidict.vercel.app',
       '   - Restart Anki',
     ];
 

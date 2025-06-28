@@ -18,7 +18,7 @@ import { useDictionary } from '@/hooks/dictionary/useDictionary';
 import { useAnkiAutoConnect } from '@/hooks/useAnkiAutoConnect';
 
 export default function DictionaryPage() {
-  console.log('🚀 DictionaryPage rendering - Lazy loading enabled');
+  console.log('🚀 DictionaryPage rendering');
 
   // LOCAL STATE
   const [newWord, setNewWord] = useState('');
@@ -29,8 +29,7 @@ export default function DictionaryPage() {
   const [searchInput, setSearchInput] = useState('');
   const [, searchTerm] = useImmediateDebounce(searchInput, 300);
 
-  // NEW: Track if we've ever loaded entries for current language pair
-  const [hasLoadedCurrentLanguage, setHasLoadedCurrentLanguage] = useState(false);
+  // Track current language pair for change detection
   const currentLanguageRef = useRef('');
 
   // Settings store
@@ -44,6 +43,7 @@ export default function DictionaryPage() {
   const error = useDictionaryStore((state) => state.error);
   const context = useDictionaryStore((state) => state.context);
   const clearContext = useDictionaryStore(useCallback((state) => state.clearContext, []));
+  const setSearchResults = useDictionaryStore((state) => state.setSearchResults);
 
   // Dictionary hook
   const {
@@ -68,44 +68,36 @@ export default function DictionaryPage() {
     [languages.sourceLanguage, languages.targetLanguage]
   );
 
-  // LAZY LOADING: Only load entries when language changes or first search
+  // Load entries when language changes (including initial mount)
   useEffect(() => {
+    console.log('🌐 Language pair check:', currentLanguageRef.current, '→', languagePair);
     if (currentLanguageRef.current !== languagePair) {
-      console.log('🌐 Language pair changed to:', languagePair);
+      console.log('🔄 Loading entries for:', languagePair);
       currentLanguageRef.current = languagePair;
-      setHasLoadedCurrentLanguage(false);
       
-      // Load a small initial batch for the new language pair
-      loadInitialEntries();
+      // Load initial entries for new language pair
+      loadEntriesPaginated(1, 200, true);
     }
-  }, [languagePair]);
+  }, [languagePair, loadEntriesPaginated]);
 
-  // Load a small initial batch (much smaller than before)
-  const loadInitialEntries = useCallback(async () => {
-    if (!hasLoadedCurrentLanguage) {
-      console.log('🔄 Loading initial entries for:', languagePair);
-      setHasLoadedCurrentLanguage(true);
-      
-      // Load just the first page to populate the list
-      await loadEntriesPaginated(1, 50, true); // Much smaller initial load
-    }
-  }, [hasLoadedCurrentLanguage, languagePair, loadEntriesPaginated]);
-
-  // Search effect - now includes auto-loading check
+  // Search effect - only filter when there's a search term
   useEffect(() => {
     if (searchTerm.trim()) {
       console.log('🔍 Searching for:', searchTerm);
       searchEntries(searchTerm);
     } else {
-      // When clearing search, ensure we have some entries loaded
-      searchEntries('');
-      if (!hasLoadedCurrentLanguage) {
-        loadInitialEntries();
-      }
+      // Clear search results to show all loaded entries
+      console.log('🔍 Clearing search - showing all entries');
+      setSearchResults({
+        entries: [],
+        total: 0,
+        page: 1,
+        pageSize: 50,
+      });
     }
-  }, [searchTerm, searchEntries, hasLoadedCurrentLanguage, loadInitialEntries]);
+  }, [searchTerm, searchEntries, setSearchResults]);
 
-  // Get current entries and recent entries (these are now lazy-loaded)
+  // Get current entries and recent entries
   const { filteredEntries, recentEntries } = useMemo(() => {
     const filtered = getEntriesForCurrentLanguages();
     const recent = getFilteredRecentEntries();
@@ -117,12 +109,24 @@ export default function DictionaryPage() {
     return searchTerm.trim() ? searchResults.entries : filteredEntries;
   }, [searchTerm, searchResults.entries, filteredEntries]);
 
-  console.log('📊 Lazy loading state:');
+  console.log('📊 Current state:');
   console.log('  - Language pair:', languagePair);
-  console.log('  - Has loaded current language:', hasLoadedCurrentLanguage);
   console.log('  - Filtered entries:', filteredEntries.length);
   console.log('  - Recent entries:', recentEntries.length);
   console.log('  - Entries to show:', entriesToShow.length);
+
+  // Ensure entries load on mount (fallback) - after filteredEntries is declared
+  useEffect(() => {
+    console.log('🚀 Mount effect - checking if entries need loading');
+    console.log('  - Filtered entries count:', filteredEntries.length);
+    console.log('  - Language pair:', languagePair);
+    
+    // If no entries loaded and we have a valid language pair, force load
+    if (filteredEntries.length === 0 && languagePair && languagePair !== '-') {
+      console.log('🔄 Force loading entries on mount for:', languagePair);
+      loadEntriesPaginated(1, 200, true);
+    }
+  }, [filteredEntries.length, languagePair, loadEntriesPaginated]);
 
   // HANDLERS
   const handleSearchEntry = useCallback((headword: string) => {
@@ -190,7 +194,7 @@ export default function DictionaryPage() {
     setSearchInput('');
   }, []);
 
-  // NEW: Load more entries when user scrolls to bottom or clicks "Load More"
+  // Load more entries when user clicks "Load More"
   const handleLoadMoreEntries = useCallback(async () => {
     if (!loading) {
       console.log('📚 Loading more entries...');
@@ -260,146 +264,11 @@ export default function DictionaryPage() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
+        {/* Mobile-first layout: Entry content first, then search components, then lists */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel */}
-          <div className="space-y-4">
-            {/* Recent Lookups */}
-            {recentEntries.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center">
-                    <History className="h-5 w-5 mr-2" />
-                    Recent ({recentEntries.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1">
-                    {recentEntries.map((entry, index) => (
-                      <button
-                        key={`recent-${entry.headword}-${index}`}
-                        onClick={() => handleSearchEntry(entry.headword)}
-                        className="w-full text-left p-2 rounded hover:bg-muted transition-colors border-l-2 border-primary bg-primary/5"
-                      >
-                        <div className="font-medium">{entry.headword}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {Array.isArray(entry.part_of_speech) 
-                            ? entry.part_of_speech.join(', ')
-                            : entry.part_of_speech}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Search */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Filter Dictionary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Filter entries..."
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    className="pl-10"
-                  />
-                  {searchInput.trim() && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleClearSearch}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                      title="Clear search"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-                
-                {searchLoading && (
-                  <div className="mt-4 text-sm text-muted-foreground">
-                    Searching...
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Dictionary Entries List - LAZY LOADED */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center">
-                  <BookOpen className="h-5 w-5 mr-2" />
-                  Dictionary ({filteredEntries.length} loaded)
-                </CardTitle>
-                {searchTerm.trim() && (
-                  <p className="text-sm text-muted-foreground">
-                    Showing {entriesToShow.length} filtered results
-                  </p>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1 max-h-96 overflow-y-auto">
-                  {loading && (
-                    <div className="text-sm text-muted-foreground p-4 text-center">
-                      Loading entries...
-                    </div>
-                  )}
-                  
-                  {entriesToShow.length > 0 ? (
-                    <>
-                      {entriesToShow.map((entry, index) => (
-                        <button
-                          key={`entry-${entry.headword}-${index}`}
-                          onClick={() => handleSearchEntry(entry.headword)}
-                          className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
-                        >
-                          <div className="font-medium">{entry.headword}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {Array.isArray(entry.part_of_speech) 
-                              ? entry.part_of_speech.join(', ')
-                              : entry.part_of_speech}
-                          </div>
-                        </button>
-                      ))}
-                      
-                      {/* Load More Button - only show if not searching and not loading */}
-                      {!searchTerm.trim() && !loading && hasLoadedCurrentLanguage && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleLoadMoreEntries}
-                          className="w-full mt-2"
-                        >
-                          Load More Entries
-                        </Button>
-                      )}
-                    </>
-                  ) : hasLoadedCurrentLanguage && !loading ? (
-                    <div className="text-sm text-muted-foreground p-4 text-center">
-                      {searchTerm.trim() ? 'No entries found matching your search.' : 'No entries yet for this language combination.'}
-                    </div>
-                  ) : !hasLoadedCurrentLanguage && !loading ? (
-                    <div className="text-sm text-muted-foreground p-4 text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={loadInitialEntries}
-                      >
-                        Load Dictionary Entries
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Center Panel - Entry Display */}
-          <div className="lg:col-span-2">
+          
+          {/* Entry Display Area - Shows first on mobile, spans 2 cols on desktop */}
+          <div className="lg:col-span-2 lg:order-2">
             {error && (
               <Card className="mb-4 border-destructive">
                 <CardContent className="pt-6">
@@ -547,7 +416,7 @@ export default function DictionaryPage() {
               </Card>
             )}
 
-            {/* Add new word */}
+            {/* Add new word - appears after entry on mobile */}
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle className="text-lg">Add New Word</CardTitle>
@@ -574,13 +443,139 @@ export default function DictionaryPage() {
               </CardContent>
             </Card>
 
-            {/* Context-Aware Search */}
+            {/* Context-Aware Search - appears after add word on mobile */}
             <div className="mt-6">
               <ContextSearch
                 onWordSelect={handleWordSelectFromContext}
                 onContextualSearch={handleContextualSearch}
               />
             </div>
+          </div>
+
+          {/* Search & Lists Panel - Shows after entry content on mobile, first column on desktop */}
+          <div className="space-y-4 lg:order-1">
+            
+            {/* Filter Dictionary */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Filter Dictionary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter entries..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="pl-10"
+                  />
+                  {searchInput.trim() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearSearch}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                      title="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+                
+                {searchLoading && (
+                  <div className="mt-4 text-sm text-muted-foreground">
+                    Searching...
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Lookups */}
+            {recentEntries.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center">
+                    <History className="h-5 w-5 mr-2" />
+                    Recent ({recentEntries.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    {recentEntries.map((entry, index) => (
+                      <button
+                        key={`recent-${entry.headword}-${index}`}
+                        onClick={() => handleSearchEntry(entry.headword)}
+                        className="w-full text-left p-2 rounded hover:bg-muted transition-colors border-l-2 border-primary bg-primary/5"
+                      >
+                        <div className="font-medium">{entry.headword}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {Array.isArray(entry.part_of_speech) 
+                            ? entry.part_of_speech.join(', ')
+                            : entry.part_of_speech}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Dictionary Entries List */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center">
+                  <BookOpen className="h-5 w-5 mr-2" />
+                  Dictionary ({filteredEntries.length} loaded)
+                </CardTitle>
+                {searchTerm.trim() && (
+                  <p className="text-sm text-muted-foreground">
+                    Showing {entriesToShow.length} filtered results
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1 max-h-96 overflow-y-auto">
+                  {entriesToShow.length > 0 ? (
+                    <>
+                      {entriesToShow.map((entry, index) => (
+                        <button
+                          key={`entry-${entry.headword}-${index}`}
+                          onClick={() => handleSearchEntry(entry.headword)}
+                          className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
+                        >
+                          <div className="font-medium">{entry.headword}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {Array.isArray(entry.part_of_speech) 
+                              ? entry.part_of_speech.join(', ')
+                              : entry.part_of_speech}
+                          </div>
+                        </button>
+                      ))}
+                      
+                      {/* Load More Button */}
+                      {!searchTerm.trim() && !loading && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadMoreEntries}
+                          className="w-full mt-2"
+                        >
+                          Load More Entries
+                        </Button>
+                      )}
+                    </>
+                  ) : loading ? (
+                    <div className="text-sm text-muted-foreground p-4 text-center">
+                      Loading entries...
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-4 text-center">
+                      {searchTerm.trim() ? 'No entries found matching your search.' : 'No entries yet for this language combination.'}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
