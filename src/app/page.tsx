@@ -9,6 +9,7 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import { ApiQueueStatus } from '@/components/ApiQueueStatus';
 import { SettingsModal } from '@/components/SettingsModal';
 import { AnkiExportButton } from '@/components/anki/AnkiExportButton';
+import { AnkiUpdateButton } from '@/components/anki/AnkiUpdateButton';
 import { ContextSearch } from '@/components/ContextSearch';
 import { useImmediateDebounce } from '@/hooks/shared/useDebounce';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -485,8 +486,18 @@ export default function DictionaryPage() {
                                   )}
                                 </div>
                                 
-                                <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                                   <AnkiExportButton
+                                    context={{
+                                      headword: currentEntry.headword,
+                                      definition: meaning.definition,
+                                      partOfSpeech: currentEntry.part_of_speech,
+                                      example: example.sentence,
+                                      translation: example.translation,
+                                    }}
+                                    className="shrink-0"
+                                  />
+                                  <AnkiUpdateButton
                                     context={{
                                       headword: currentEntry.headword,
                                       definition: meaning.definition,
