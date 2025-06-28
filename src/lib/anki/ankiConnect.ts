@@ -135,6 +135,62 @@ export class AnkiConnect {
   }
 
   /**
+   * Find recent notes in a deck
+   */
+  async findRecentNotes(deckName: string, limit: number = 1): Promise<number[]> {
+    const query = `deck:"${deckName}" added:1`; // Notes added in last 1 day
+    const noteIds = await this.makeRequest('findNotes', { query });
+    
+    // Sort by note ID descending (newer notes have higher IDs typically)
+    const sortedIds = noteIds.sort((a: number, b: number) => b - a);
+    
+    return sortedIds.slice(0, limit);
+  }
+
+  /**
+   * Get note information including fields
+   */
+  async getNotesInfo(noteIds: number[]): Promise<any[]> {
+    return await this.makeRequest('notesInfo', { notes: noteIds });
+  }
+
+  /**
+   * Update note fields
+   */
+  async updateNoteFields(noteId: number, fields: Record<string, string>): Promise<void> {
+    const note = {
+      id: noteId,
+      fields: fields,
+    };
+
+    await this.makeRequest('updateNoteFields', { note });
+  }
+
+  /**
+   * Find and update the most recent note in a deck
+   */
+  async updateMostRecentNote(deckName: string, fields: Record<string, string>): Promise<boolean> {
+    try {
+      // Find the most recent note
+      const recentNotes = await this.findRecentNotes(deckName, 1);
+      
+      if (recentNotes.length === 0) {
+        throw new AnkiConnectError('No recent notes found in the specified deck');
+      }
+
+      const noteId = recentNotes[0];
+      
+      // Update the note fields
+      await this.updateNoteFields(noteId, fields);
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to update recent note:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Check if AnkiConnect is available and get setup instructions
    */
   static getSetupInstructions(): {

@@ -14,6 +14,11 @@ const entryMatchesLanguages = (
          entry.metadata.target_language === targetLanguage;
 };
 
+// Detect if we're using remote database
+const isRemoteDatabase = () => {
+  return process.env.USE_LOCAL_DB !== 'true';
+};
+
 export function useDictionary() {
   // Access store data with simple selectors to avoid subscription loops
   const entries = useDictionaryStore((state) => state.entries);
@@ -336,7 +341,7 @@ export function useDictionary() {
   }, [languages, currentEntry, removeEntry, setCurrentEntry, setError, processApiRequest]);
 
   /**
-   * Load entries with pagination and duplicate prevention - now using API calls
+   * OPTIMIZED: Smart loading strategy based on database type
    */
   const loadEntriesPaginated = useCallback(async (page = 1, pageSize = 200, reset = false): Promise<SearchResult> => {
     // Prevent simultaneous loading
@@ -355,6 +360,9 @@ export function useDictionary() {
     setError(null);
 
     try {
+      // OPTIMIZATION: Use larger page size for remote databases
+      const optimizedPageSize = isRemoteDatabase() ? Math.max(pageSize, 500) : pageSize;
+      
       const response = await fetch('/api/entries/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,7 +372,7 @@ export function useDictionary() {
             targetLanguage: languages.targetLanguage,
           },
           page,
-          pageSize,
+          pageSize: optimizedPageSize,
         }),
       });
 
@@ -399,18 +407,11 @@ export function useDictionary() {
         });
         
         if (newEntries.length > 0) {
-          console.log(`📝 BEFORE setEntries: current entries.length = ${entries.length}`);
           console.log(`📝 Adding ${newEntries.length} new entries`);
           
           // Get current state directly from store to avoid stale closure
           const currentStoreEntries = useDictionaryStore.getState().entries;
-          console.log(`📝 Current store entries: ${currentStoreEntries.length}`);
-          
           setEntries([...currentStoreEntries, ...newEntries]);
-          
-          console.log(`Added ${newEntries.length} new entries (filtered ${result.data.entries.length - newEntries.length} duplicates)`);
-        } else {
-          console.log(`📝 No new entries to add on page ${page}`);
         }
       }
 
@@ -432,70 +433,89 @@ export function useDictionary() {
   }, [setLoading, setError, languages, setEntries]);
 
   /**
-   * Optimized load all entries with chunked loading
+   * OPTIMIZED: Smart entry loading based on database type
    */
   const loadAllEntriesOptimized = useCallback(async () => {
-  const languagePair = `${languages.sourceLanguage}-${languages.targetLanguage}`;
-  
-  // Prevent simultaneous loads and check if already loaded for this language pair
-  if (loadingRef.current.isLoadingEntries) {
-    console.log('Already loading entries, skipping...');
-    return;
-  }
-
-  if (loadingRef.current.loadedLanguagePair === languagePair && allEntriesLoaded) {
-    console.log('Entries already loaded for current language pair');
-    return;
-  }
-
-  loadingRef.current.isLoadingEntries = true;
-  loadingRef.current.loadedLanguagePair = languagePair;
-  
-  const CHUNK_SIZE = 200;
-  let page = 1;
-  let hasMore = true;
-  let totalLoaded = 0;
-  
-  setAllEntriesLoaded(false);
-  
-  try {
-    console.log(`Starting optimized loading for ${languagePair}...`);
+    const languagePair = `${languages.sourceLanguage}-${languages.targetLanguage}`;
     
-    while (hasMore && page <= 25) {
-      const result = await loadEntriesPaginated(page, CHUNK_SIZE, page === 1);
-      
-      const actualNewEntries = result.entries.length;
-      totalLoaded += actualNewEntries;
-      
-      // DIAGNOSTIC LOGGING
-      console.log(`📊 Page ${page} DEBUG:`, {
-        returnedEntries: actualNewEntries,
-        totalInDB: result.total,
-        chunkSize: CHUNK_SIZE,
-        currentTotal: totalLoaded,
-        shouldContinue: actualNewEntries === CHUNK_SIZE,
-        totalCheck: result.total > page * CHUNK_SIZE
-      });
-      
-      hasMore = actualNewEntries === CHUNK_SIZE && result.total > page * CHUNK_SIZE;
-      page++;
-      
-      if (!hasMore) {
-        console.log(`🛑 Stopping because: actualNewEntries(${actualNewEntries}) !== CHUNK_SIZE(${CHUNK_SIZE}) OR total(${result.total}) <= page*chunk(${page * CHUNK_SIZE})`);
-      }
+    // Prevent simultaneous loads and check if already loaded for this language pair
+    if (loadingRef.current.isLoadingEntries) {
+      console.log('Already loading entries, skipping...');
+      return;
     }
+
+    if (loadingRef.current.loadedLanguagePair === languagePair && allEntriesLoaded) {
+      console.log('Entries already loaded for current language pair');
+      return;
+    }
+
+    loadingRef.current.isLoadingEntries = true;
+    loadingRef.current.loadedLanguagePair = languagePair;
     
-    setAllEntriesLoaded(true);
-    console.log(`Optimized loading completed: ${totalLoaded} entries loaded for ${languagePair}`);
+    setAllEntriesLoaded(false);
     
-  } catch (error) {
-    console.error('Error loading entries in chunks:', error);
-    setError('Failed to load dictionary entries');
-  } finally {
-    loadingRef.current.isLoadingEntries = false;
-  }
-  // Remove entries.length from dependencies since we use refs to track state
-}, [loadEntriesPaginated, setAllEntriesLoaded, setError, languages, allEntriesLoaded]);
+    try {
+      console.log(`Starting optimized loading for ${languagePair}...`);
+      
+      if (isRemoteDatabase()) {
+        // REMOTE DATABASE: Load larger chunks, fewer requests
+        console.log('🌐 Remote database detected - using optimized loading strategy');
+        
+        const LARGE_CHUNK_SIZE = 1000; // Much larger chunks for remote
+        const MAX_PAGES = 10; // Limit to prevent infinite loading
+        
+        let page = 1;
+        let hasMore = true;
+        let totalLoaded = 0;
+        
+        while (hasMore && page <= MAX_PAGES) {
+          const result = await loadEntriesPaginated(page, LARGE_CHUNK_SIZE, page === 1);
+          
+          const actualNewEntries = result.entries.length;
+          totalLoaded += actualNewEntries;
+          
+          console.log(`🌐 Remote page ${page}: loaded ${actualNewEntries} entries (total: ${totalLoaded})`);
+          
+          // For remote: stop if we get less than requested (end of data)
+          hasMore = actualNewEntries === LARGE_CHUNK_SIZE && result.total > page * LARGE_CHUNK_SIZE;
+          page++;
+          
+          if (!hasMore) {
+            console.log(`🌐 Remote loading complete: ${totalLoaded} entries`);
+          }
+        }
+      } else {
+        // LOCAL DATABASE: Use original strategy
+        console.log('💽 Local database detected - using standard loading strategy');
+        
+        const CHUNK_SIZE = 200;
+        let page = 1;
+        let hasMore = true;
+        let totalLoaded = 0;
+        
+        while (hasMore && page <= 25) {
+          const result = await loadEntriesPaginated(page, CHUNK_SIZE, page === 1);
+          
+          const actualNewEntries = result.entries.length;
+          totalLoaded += actualNewEntries;
+          
+          console.log(`💽 Local page ${page}: loaded ${actualNewEntries} entries`);
+          
+          hasMore = actualNewEntries === CHUNK_SIZE && result.total > page * CHUNK_SIZE;
+          page++;
+        }
+      }
+      
+      setAllEntriesLoaded(true);
+      console.log(`✅ Loading completed for ${languagePair}`);
+      
+    } catch (error) {
+      console.error('Error loading entries in chunks:', error);
+      setError('Failed to load dictionary entries');
+    } finally {
+      loadingRef.current.isLoadingEntries = false;
+    }
+  }, [loadEntriesPaginated, setAllEntriesLoaded, setError, languages, allEntriesLoaded]);
 
   /**
    * Reset dictionary when languages change

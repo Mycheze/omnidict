@@ -4,9 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3200 --turbopack",
+    "dev:local": "USE_LOCAL_DB=true next dev -p 3200 --turbopack",
+    "dev:turso": "next dev -p 3200 --turbopack",
     "build": "next build",
+    "build:local": "USE_LOCAL_DB=true next build",
     "start": "next start -p 3200",
+    "start:local": "USE_LOCAL_DB=true next start -p 3200",
     "lint": "next lint",
+    "sync": "bash sync-project-knowledge.sh",
     "sync-knowledge": "bash sync-project-knowledge.sh"
   },
   "dependencies": {

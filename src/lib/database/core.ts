@@ -83,20 +83,20 @@ class SQLiteWrapper implements DatabaseInterface {
 }
 
 /**
- * Core database connection manager with environment detection
+ * Core database connection manager with Turso as default
  */
 export class DatabaseCore {
   private db: DatabaseInterface | null = null;
   private static instance: DatabaseCore;
   private initPromise: Promise<void> | null = null;
   private isInitialized = false;
-  private isProduction = false;
+  private useLocalDb = false;
 
   constructor() {
-    // Detect production environment
-    this.isProduction = process.env.NODE_ENV === 'production' || 
-                       !!process.env.TURSO_DATABASE_URL ||
-                       process.env.VERCEL === '1';
+    // NEW LOGIC: Use local DB only if explicitly requested
+    this.useLocalDb = process.env.USE_LOCAL_DB === 'true';
+    
+    console.log(`Database mode: ${this.useLocalDb ? 'Local SQLite' : 'Turso (default)'}`);
   }
 
   public static getInstance(): DatabaseCore {
@@ -129,12 +129,12 @@ export class DatabaseCore {
 
   private async initializeDatabase(): Promise<void> {
     try {
-      if (this.isProduction) {
-        console.log('Initializing Turso database connection...');
-        await this.initializeTurso();
-      } else {
+      if (this.useLocalDb) {
         console.log('Initializing local SQLite database...');
         await this.initializeLocal();
+      } else {
+        console.log('Initializing Turso database connection...');
+        await this.initializeTurso();
       }
       
       // Create tables and run migrations
@@ -142,7 +142,7 @@ export class DatabaseCore {
       await this.runMigrations();
       
       // Only optimize for local development
-      if (!this.isProduction) {
+      if (this.useLocalDb) {
         await this.optimizeDatabase();
       }
       
@@ -166,7 +166,7 @@ export class DatabaseCore {
     const authToken = process.env.TURSO_AUTH_TOKEN;
 
     if (!url) {
-      throw new Error('TURSO_DATABASE_URL environment variable is required in production');
+      throw new Error('TURSO_DATABASE_URL environment variable is required for Turso connection');
     }
 
     try {
@@ -214,7 +214,7 @@ export class DatabaseCore {
   }
 
   private setPragmas(): void {
-    if (!this.db || this.isProduction) return;
+    if (!this.db || !this.useLocalDb) return;
     
     try {
       // Only set pragmas for local SQLite
@@ -281,7 +281,7 @@ export class DatabaseCore {
         lemma TEXT NOT NULL,
         target_language TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP DEFAULT (datetime('now', '+24 hours')),
+        expires_at TIMESTAMP,
         UNIQUE(word, target_language)
       )`,
     ];
@@ -338,17 +338,19 @@ export class DatabaseCore {
         `);
       }
 
-      // Migration 3: Add expires_at to lemma_cache table (safe)
+      // Migration 3: Add expires_at to lemma_cache table (FIXED for Turso compatibility)
       if (!(await this.columnExists('lemma_cache', 'expires_at'))) {
-        await this.db.exec(`ALTER TABLE lemma_cache ADD COLUMN expires_at TIMESTAMP DEFAULT (datetime('now', '+24 hours'))`);
+        // Use NULL default instead of datetime function - Turso compatible
+        await this.db.exec('ALTER TABLE lemma_cache ADD COLUMN expires_at TIMESTAMP');
         console.log('✓ Added expires_at column to lemma_cache table');
         
-        // Update existing cache entries to expire in 24 hours
+        // Update existing cache entries to expire in 24 hours using separate statement
         await this.db.exec(`
           UPDATE lemma_cache 
           SET expires_at = datetime('now', '+24 hours')
           WHERE expires_at IS NULL
         `);
+        console.log('✓ Updated existing lemma cache entries with expiration dates');
       }
 
       console.log('Database migrations completed successfully');
@@ -372,7 +374,7 @@ export class DatabaseCore {
   }
 
   private async optimizeDatabase(): Promise<void> {
-    if (!this.db || this.isProduction) return;
+    if (!this.db || !this.useLocalDb) return;
     
     try {
       console.log('Optimizing database with composite indexes...');
@@ -570,7 +572,7 @@ export class DatabaseCore {
       
       // Database size is only available for local SQLite
       let sizeMB = '0';
-      if (!this.isProduction) {
+      if (this.useLocalDb) {
         try {
           const pageCountStmt = this.db.prepare('PRAGMA page_count');
           const pageSizeStmt = this.db.prepare('PRAGMA page_size');

@@ -11,46 +11,40 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { AnkiExportButton } from '@/components/anki/AnkiExportButton';
 import { ContextSearch } from '@/components/ContextSearch';
 import { useImmediateDebounce } from '@/hooks/shared/useDebounce';
-// STEP 1: Settings store ✅
 import { useSettingsStore } from '@/stores/settingsStore';
-// STEP 2: Dictionary store ✅  
 import { useDictionaryStore } from '@/stores/dictionaryStore';
-// STEP 3: Dictionary hook ✅
 import { useDictionary } from '@/hooks/dictionary/useDictionary';
-// STEP 4: Add Anki auto-connect
 import { useAnkiAutoConnect } from '@/hooks/useAnkiAutoConnect';
 
 export default function DictionaryPage() {
-  console.log('🚀 DictionaryPage rendering - Step 4: Auto-loading effects added');
+  console.log('🚀 DictionaryPage rendering - Lazy loading enabled');
 
   // LOCAL STATE
   const [newWord, setNewWord] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  // STEP 4: Use immediate debounce to eliminate typing lag  
+  // Use immediate debounce to eliminate typing lag  
   const [searchInput, setSearchInput] = useState('');
   const [, searchTerm] = useImmediateDebounce(searchInput, 300);
 
-  // STEP 4: Refs for tracking initialization to prevent loops
-  const hasInitialized = useRef(false);
-  const currentLanguagePair = useRef('');
+  // NEW: Track if we've ever loaded entries for current language pair
+  const [hasLoadedCurrentLanguage, setHasLoadedCurrentLanguage] = useState(false);
+  const currentLanguageRef = useRef('');
 
-  // STEP 1: Settings store ✅
+  // Settings store
   const languages = useSettingsStore(useCallback((state) => state.languages, []));
   const updateLanguages = useSettingsStore(useCallback((state) => state.updateLanguages, []));
 
-  // STEP 2: Dictionary store ✅  
-  const entries = useDictionaryStore((state) => state.entries);
+  // Dictionary store  
   const currentEntry = useDictionaryStore((state) => state.currentEntry);
   const searchResults = useDictionaryStore((state) => state.searchResults);
   const loading = useDictionaryStore((state) => state.loading);
   const error = useDictionaryStore((state) => state.error);
-  const allEntriesLoaded = useDictionaryStore((state) => state.allEntriesLoaded);
   const context = useDictionaryStore((state) => state.context);
   const clearContext = useDictionaryStore(useCallback((state) => state.clearContext, []));
 
-  // STEP 3: Dictionary hook ✅
+  // Dictionary hook
   const {
     searchEntries,
     getEntry,
@@ -59,99 +53,80 @@ export default function DictionaryPage() {
     deleteEntry,
     createContextualEntry,
     searchLoading,
-    loadAllEntriesOptimized,
-    resetForLanguageChange,
     getFilteredRecentEntries,
     getEntriesForCurrentLanguages,
+    loadEntriesPaginated,
   } = useDictionary();
 
-  // STEP 4: Auto-connect to Anki if previously configured
+  // Auto-connect to Anki
   useAnkiAutoConnect();
 
-  console.log('🔍 Dictionary store state:');
-  console.log('  - Entries count:', entries.length);
-  console.log('  - Current entry:', currentEntry?.headword || 'none');
-  console.log('  - Loading:', loading);
-  console.log('  - All entries loaded:', allEntriesLoaded);
-  console.log('  - Search loading:', searchLoading);
-  console.log('  - Error:', error);
-
-  // STEP 4: Create stable language pair string for optimization
+  // Create stable language pair string
   const languagePair = useMemo(() => 
     `${languages.sourceLanguage}-${languages.targetLanguage}`, 
     [languages.sourceLanguage, languages.targetLanguage]
   );
 
-  // STEP 4: CRITICAL - Fixed search effect that doesn't cause input lag
+  // LAZY LOADING: Only load entries when language changes or first search
+  useEffect(() => {
+    if (currentLanguageRef.current !== languagePair) {
+      console.log('🌐 Language pair changed to:', languagePair);
+      currentLanguageRef.current = languagePair;
+      setHasLoadedCurrentLanguage(false);
+      
+      // Load a small initial batch for the new language pair
+      loadInitialEntries();
+    }
+  }, [languagePair]);
+
+  // Load a small initial batch (much smaller than before)
+  const loadInitialEntries = useCallback(async () => {
+    if (!hasLoadedCurrentLanguage) {
+      console.log('🔄 Loading initial entries for:', languagePair);
+      setHasLoadedCurrentLanguage(true);
+      
+      // Load just the first page to populate the list
+      await loadEntriesPaginated(1, 50, true); // Much smaller initial load
+    }
+  }, [hasLoadedCurrentLanguage, languagePair, loadEntriesPaginated]);
+
+  // Search effect - now includes auto-loading check
   useEffect(() => {
     if (searchTerm.trim()) {
       console.log('🔍 Searching for:', searchTerm);
       searchEntries(searchTerm);
     } else {
-      // Clear search results when search term is empty
+      // When clearing search, ensure we have some entries loaded
       searchEntries('');
-    }
-  }, [searchTerm, searchEntries]);
-
-  // STEP 4: CRITICAL - Single initialization effect with proper dependency management
-  useEffect(() => {
-  console.log('🔍 Effect RUNNING with deps:', {
-    languagePair,
-    loading,
-    allEntriesLoaded,
-    hasInitialized: hasInitialized.current,
-    currentPair: currentLanguagePair.current
-  });
-
-    const needsInitialization = !hasInitialized.current || 
-                               currentLanguagePair.current !== languagePair;
-    
-    if (needsInitialization && !loading) {
-      console.log('🚀 Initializing dictionary for:', languagePair);
-      
-      hasInitialized.current = true;
-      
-      // Reset if language pair changed
-      if (currentLanguagePair.current !== languagePair) {
-        console.log('🌐 Language pair changed, resetting...');
-        currentLanguagePair.current = languagePair;
-        resetForLanguageChange();
-      }
-      
-      // Load entries if not already loaded
-      if (!allEntriesLoaded) {
-        console.log('📚 Loading entries...');
-        setTimeout(() => {
-          loadAllEntriesOptimized();
-        }, 0);
+      if (!hasLoadedCurrentLanguage) {
+        loadInitialEntries();
       }
     }
-  }, [languagePair, loading, allEntriesLoaded, resetForLanguageChange, loadAllEntriesOptimized]);
+  }, [searchTerm, searchEntries, hasLoadedCurrentLanguage, loadInitialEntries]);
 
-  // STEP 4: Optimized filtering with proper memoization and language filtering
+  // Get current entries and recent entries (these are now lazy-loaded)
   const { filteredEntries, recentEntries } = useMemo(() => {
     const filtered = getEntriesForCurrentLanguages();
     const recent = getFilteredRecentEntries();
-
     return { filteredEntries: filtered, recentEntries: recent };
   }, [getEntriesForCurrentLanguages, getFilteredRecentEntries]);
 
-  // STEP 4: Get entries to display based on search with memoization
+  // Get entries to display based on search
   const entriesToShow = useMemo(() => {
     return searchTerm.trim() ? searchResults.entries : filteredEntries;
   }, [searchTerm, searchResults.entries, filteredEntries]);
 
-  console.log('📊 Computed data:');
+  console.log('📊 Lazy loading state:');
+  console.log('  - Language pair:', languagePair);
+  console.log('  - Has loaded current language:', hasLoadedCurrentLanguage);
   console.log('  - Filtered entries:', filteredEntries.length);
   console.log('  - Recent entries:', recentEntries.length);
   console.log('  - Entries to show:', entriesToShow.length);
-  console.log('  - Language pair:', languagePair);
-  console.log('  - Has initialized:', hasInitialized.current);
 
-  // STEP 3: REAL HANDLERS ✅
+  // HANDLERS
   const handleSearchEntry = useCallback((headword: string) => {
     console.log('🔍 Search entry clicked:', headword);
-    getEntry(headword, false); // Don't mark as searched
+    getEntry(headword, false);
   }, [getEntry]);
 
   const handleCreateNewEntry = useCallback(() => {
@@ -186,7 +161,6 @@ export default function DictionaryPage() {
     }
   }, [handleCreateNewEntry]);
 
-  // STEP 4: Real language change handler with reset
   const handleLanguageChange = useCallback((type: 'source' | 'target', value: string) => {
     console.log('🌐 Language change triggered:', type, value);
     
@@ -195,9 +169,6 @@ export default function DictionaryPage() {
     } else {
       updateLanguages({ targetLanguage: value });
     }
-    
-    // Reset initialization flag so the effect can run again
-    hasInitialized.current = false;
   }, [updateLanguages]);
 
   const handleRegenerateEntry = useCallback(() => {
@@ -217,6 +188,15 @@ export default function DictionaryPage() {
   const handleClearSearch = useCallback(() => {
     setSearchInput('');
   }, []);
+
+  // NEW: Load more entries when user scrolls to bottom or clicks "Load More"
+  const handleLoadMoreEntries = useCallback(async () => {
+    if (!loading) {
+      console.log('📚 Loading more entries...');
+      const currentPage = Math.floor(filteredEntries.length / 50) + 1;
+      await loadEntriesPaginated(currentPage, 50, false);
+    }
+  }, [loading, filteredEntries.length, loadEntriesPaginated]);
 
   const darkMode = useSettingsStore((state) => state.preferences.darkMode);
   const updatePreferences = useSettingsStore((state) => state.updatePreferences);
@@ -282,7 +262,7 @@ export default function DictionaryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel */}
           <div className="space-y-4">
-            {/* STEP 4: Recent Lookups - FIXED: Only show for current language */}
+            {/* Recent Lookups */}
             {recentEntries.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -312,7 +292,7 @@ export default function DictionaryPage() {
               </Card>
             )}
 
-            {/* STEP 4: Search with immediate response - no lag */}
+            {/* Search */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Filter Dictionary</CardTitle>
@@ -322,7 +302,7 @@ export default function DictionaryPage() {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Filter entries..."
-                    value={searchInput} // Immediate value - no lag!
+                    value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-10"
                   />
@@ -347,12 +327,12 @@ export default function DictionaryPage() {
               </CardContent>
             </Card>
 
-            {/* Dictionary Entries List */}
+            {/* Dictionary Entries List - LAZY LOADED */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center">
                   <BookOpen className="h-5 w-5 mr-2" />
-                  Dictionary ({filteredEntries.length} entries)
+                  Dictionary ({filteredEntries.length} loaded)
                 </CardTitle>
                 {searchTerm.trim() && (
                   <p className="text-sm text-muted-foreground">
@@ -362,30 +342,54 @@ export default function DictionaryPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-1 max-h-96 overflow-y-auto">
-                  {loading && !allEntriesLoaded && (
+                  {loading && (
                     <div className="text-sm text-muted-foreground p-4 text-center">
-                      Loading dictionary... ({filteredEntries.length} loaded)
+                      Loading entries...
                     </div>
                   )}
                   
                   {entriesToShow.length > 0 ? (
-                    entriesToShow.map((entry, index) => (
-                      <button
-                        key={`entry-${entry.headword}-${index}`}
-                        onClick={() => handleSearchEntry(entry.headword)}
-                        className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
-                      >
-                        <div className="font-medium">{entry.headword}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {Array.isArray(entry.part_of_speech) 
-                            ? entry.part_of_speech.join(', ')
-                            : entry.part_of_speech}
-                        </div>
-                      </button>
-                    ))
-                  ) : allEntriesLoaded && !loading ? (
+                    <>
+                      {entriesToShow.map((entry, index) => (
+                        <button
+                          key={`entry-${entry.headword}-${index}`}
+                          onClick={() => handleSearchEntry(entry.headword)}
+                          className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
+                        >
+                          <div className="font-medium">{entry.headword}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {Array.isArray(entry.part_of_speech) 
+                              ? entry.part_of_speech.join(', ')
+                              : entry.part_of_speech}
+                          </div>
+                        </button>
+                      ))}
+                      
+                      {/* Load More Button - only show if not searching and not loading */}
+                      {!searchTerm.trim() && !loading && hasLoadedCurrentLanguage && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadMoreEntries}
+                          className="w-full mt-2"
+                        >
+                          Load More Entries
+                        </Button>
+                      )}
+                    </>
+                  ) : hasLoadedCurrentLanguage && !loading ? (
                     <div className="text-sm text-muted-foreground p-4 text-center">
                       {searchTerm.trim() ? 'No entries found matching your search.' : 'No entries yet for this language combination.'}
+                    </div>
+                  ) : !hasLoadedCurrentLanguage && !loading ? (
+                    <div className="text-sm text-muted-foreground p-4 text-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={loadInitialEntries}
+                      >
+                        Load Dictionary Entries
+                      </Button>
                     </div>
                   ) : null}
                 </div>

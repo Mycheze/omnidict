@@ -3,8 +3,8 @@ import { z } from 'zod';
 // Zod schemas for validation
 export const WordSchema = z.string()
   .min(1, 'Word is required')
-  .max(100, 'Word is too long (max 100 characters)')
-  .regex(/^[\p{L}\p{N}\s\-'.,!?]+$/u, 'Word contains invalid characters')
+  .max(200, 'Word is too long (max 200 characters)') // Increased from 100 to allow contextual hints
+  .regex(/^[\p{L}\p{N}\p{P}\p{S}\s]+$/u, 'Word contains invalid characters')
   .transform(str => str.trim());
 
 export const LanguageSchema = z.string()
@@ -32,7 +32,7 @@ export const SearchRequestSchema = z.object({
     targetLanguage: LanguageSchema.optional(),
   }),
   page: z.number().int().min(1).max(100).default(1),
-  pageSize: z.number().int().min(1).max(200).default(50),
+  pageSize: z.number().int().min(1).max(2000).default(50), // FIXED: Increased from 200 to 2000 for remote DB optimization
 });
 
 export const LanguageValidationSchema = z.object({

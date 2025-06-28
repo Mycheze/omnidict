@@ -8,7 +8,7 @@ An AI-powered dictionary application for language learners with context-aware de
 - **AI-Generated Entries**: Powered by DeepSeek AI for accurate definitions and examples
 - **Anki Integration**: Export entries directly to your Anki decks
 - **Multi-Language Support**: Customizable language pairs for learning
-- **Offline-First**: SQLite database for fast, reliable access
+- **Cloud Database**: Uses Turso for reliable, scalable data storage
 
 ## Getting Started
 
@@ -16,6 +16,7 @@ An AI-powered dictionary application for language learners with context-aware de
 
 - Node.js 18+ 
 - A DeepSeek API key
+- A Turso database (recommended) or local SQLite for development
 
 ### Environment Setup
 
@@ -24,10 +25,33 @@ An AI-powered dictionary application for language learners with context-aware de
    cp .env.example .env.local
    ```
 
-2. Add your API key to `.env.local`:
-   ```
+2. **For Turso (Recommended - Default)**:
+   ```env
    DEEPSEEK_API_KEY=your_api_key_here
+   TURSO_DATABASE_URL=libsql://your-database-url.turso.io
+   TURSO_AUTH_TOKEN=your_turso_auth_token_here
    ```
+
+3. **For Local Development (Optional)**:
+   ```env
+   DEEPSEEK_API_KEY=your_api_key_here
+   USE_LOCAL_DB=true
+   DATABASE_PATH=./data/dictionary.db
+   ```
+
+### Database Setup
+
+#### Option 1: Turso (Recommended - Default)
+
+1. Sign up at [turso.tech](https://turso.tech)
+2. Create a new database
+3. Get your database URL and auth token
+4. Add them to your `.env.local` file
+
+#### Option 2: Local SQLite (Development)
+
+1. Set `USE_LOCAL_DB=true` in your `.env.local`
+2. The local database will be created automatically
 
 ### Installation
 
@@ -51,7 +75,7 @@ npm start
 ## Technology Stack
 
 - **Frontend**: Next.js 15, React 19, Tailwind CSS
-- **Database**: SQLite with better-sqlite3
+- **Database**: Turso (libSQL) with SQLite fallback
 - **AI**: DeepSeek API (OpenAI-compatible)
 - **State Management**: Zustand
 - **UI Components**: Shadcn/ui + Lucide icons
@@ -66,7 +90,7 @@ MIT License - see LICENSE file for details
 
 ## Development Notes
 
-- Database is automatically created on first run
+- **Database**: Uses Turso by default. Set `USE_LOCAL_DB=true` for local SQLite
 - The app runs on port 3200 by default
 - Context-aware search works by double-clicking words in the text area
 - All AI prompts are stored in `data/prompts/` for easy customization
