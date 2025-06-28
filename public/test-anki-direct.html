@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anki Direct Connection Test</title>
+</head>
+<body>
+    <h1>Testing Direct AnkiConnect Connection</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <div id="result"></div>
+
+    <script>
+        async function testConnection() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:8765', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'version',
+                        version: 6
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                resultDiv.innerHTML = `<div style="color: green;">✅ SUCCESS: Connected to AnkiConnect v${data.result}</div>`;
+                console.log('Success:', data);
+            } catch (error) {
+                resultDiv.innerHTML = `<div style="color: red;">❌ FAILED: ${error.message}</div>`;
+                console.error('Failed:', error);
+            }
+        }
+    </script>
+</body>
+</html>
