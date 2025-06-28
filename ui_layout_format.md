@@ -1,4 +1,4 @@
-# Deep Dict - UI Layout Reference
+# Omnidict - UI Layout Reference
 
 ## Layout Communication Format
 

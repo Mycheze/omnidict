@@ -40,7 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Deep Dict specific files
+# Omnidict specific files
 # Database files
 *.db
 data/dictionary.db

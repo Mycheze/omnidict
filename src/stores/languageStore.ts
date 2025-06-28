@@ -181,7 +181,7 @@ export const useLanguageStore = create<LanguageStore>()(
       },
     }),
     {
-      name: 'deep-dict-language-management',
+      name: 'omnidict-language-management',
       version: 1,
     }
   )

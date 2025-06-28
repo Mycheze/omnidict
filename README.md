@@ -1,4 +1,4 @@
-# Deep Dict
+# Omnidict
 
 An AI-powered dictionary application for language learners with context-aware definitions, example sentences, and Anki integration.
 

@@ -5,10 +5,10 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Deep Dict - AI-Powered Language Dictionary',
+  title: 'Omnidict - AI-Powered Language Dictionary',
   description: 'An intelligent dictionary application for language learners with AI-powered entries, examples, and translations.',
   keywords: ['dictionary', 'language learning', 'AI', 'translation', 'vocabulary'],
-  authors: [{ name: 'Deep Dict Team' }],
+  authors: [{ name: 'Ben and Claude AI' }],
 };
 
 export const viewport: Viewport = {

@@ -74,7 +74,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
     }),
     {
-      name: 'deep-dict-settings',
+      name: 'omnidict-settings',
       version: 4, // Increment version to force clean migration
       
       // Simple storage that works with SSR

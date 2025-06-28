@@ -35,7 +35,7 @@ const defaultSettings: AnkiSettings = {
   deck: '',
   noteType: '',
   fieldMappings: [],
-  tags: ['deepdict'],
+  tags: ['omnidict'],
   ankiConnectUrl: '/api/anki', // Changed from 'http://localhost:8765'
 };
 
