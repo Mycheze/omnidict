@@ -94,6 +94,12 @@ export interface SearchResult {
   pageSize: number;
 }
 
+export interface PaginationPage {
+  page: number;
+  startHeadword: string;
+  endHeadword: string;
+}
+
 // Language Types
 export interface Language {
   code: string;

@@ -13,6 +13,7 @@ interface ContextState {
 interface DictionaryState {
   // Current data
   entries: DictionaryEntry[];
+  totalEntries: number;
   currentEntry: DictionaryEntry | null;
   recentEntries: DictionaryEntry[];
   
@@ -23,6 +24,7 @@ interface DictionaryState {
     total: number;
     page: number;
     pageSize: number;
+    paginationIndex?: Array<{ page: number; startHeadword: string; endHeadword: string }>;
   };
 
   // Context-aware search state
@@ -31,12 +33,12 @@ interface DictionaryState {
   // UI state
   loading: boolean;
   error: string | null;
-  allEntriesLoaded: boolean;
 }
 
 interface DictionaryActions {
   // Basic setters
   setEntries: (entries: DictionaryEntry[]) => void;
+  setTotalEntries: (total: number) => void;
   setCurrentEntry: (entry: DictionaryEntry | null) => void;
   addToRecentEntries: (entry: DictionaryEntry, isNewOrSearched?: boolean) => void;
   
@@ -46,11 +48,11 @@ interface DictionaryActions {
     total: number;
     page: number;
     pageSize: number;
+    paginationIndex?: Array<{ page: number; startHeadword: string; endHeadword: string }>;
   }) => void;
 
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-  setAllEntriesLoaded: (loaded: boolean) => void;
   
   // Context-aware actions
   setContextSentence: (sentence: string) => void;
@@ -79,6 +81,7 @@ export const useDictionaryStore = create<DictionaryState & DictionaryActions>()(
   (set, get) => ({
     // Initial state
     entries: [],
+    totalEntries: 0,
     currentEntry: null,
     recentEntries: [],
     
@@ -88,6 +91,7 @@ export const useDictionaryStore = create<DictionaryState & DictionaryActions>()(
       total: 0,
       page: 1,
       pageSize: 50,
+      paginationIndex: [],
     },
 
     // Context state
@@ -95,10 +99,10 @@ export const useDictionaryStore = create<DictionaryState & DictionaryActions>()(
 
     loading: false,
     error: null,
-    allEntriesLoaded: false,
 
     // Basic setters
     setEntries: (entries) => set({ entries }),
+    setTotalEntries: (total) => set({ totalEntries: total }),
     setCurrentEntry: (entry) => set({ currentEntry: entry }),
     
     /**
@@ -122,7 +126,6 @@ export const useDictionaryStore = create<DictionaryState & DictionaryActions>()(
 
     setLoading: (loading) => set({ loading }),
     setError: (error) => set({ error }),
-    setAllEntriesLoaded: (loaded) => set({ allEntriesLoaded: loaded }),
 
     // Context-aware actions
     setContextSentence: (sentence) => {

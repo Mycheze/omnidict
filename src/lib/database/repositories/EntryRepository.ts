@@ -319,11 +319,8 @@ export class EntryRepository {
         (page - 1) * pageSize
       ) as Array<{ id: number }>;
 
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
+      const ids = rows.map(r => r.id);
+      const entries = await this.getEntriesByIds(ids);
 
       return {
         entries,
@@ -355,14 +352,9 @@ export class EntryRepository {
       `);
       
       const rows = await stmt.all(sourceLanguage, targetLanguage, limit) as Array<{ id: number }>;
+      const ids = rows.map(r => r.id);
       
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
-      
-      return entries;
+      return this.getEntriesByIds(ids);
     } catch (error) {
       console.error('Error getting recent entries:', error);
       return [];
@@ -418,66 +410,137 @@ export class EntryRepository {
   }
 
   /**
-   * Build DictionaryEntry from joined query results efficiently
+   * Get multiple entries by ID efficiently, preserving input order
+   */
+  public async getEntriesByIds(ids: number[]): Promise<DictionaryEntry[]> {
+    try {
+      if (!ids.length) return [];
+
+      const db = this.core.getDatabase();
+      const placeholders = ids.map(() => '?').join(',');
+      
+      const query = `
+        SELECT 
+          e.id, e.headword, e.part_of_speech, e.source_language, e.target_language, 
+          e.definition_language, e.has_context, e.context_sentence,
+          m.id as meaning_id, m.definition, m.order_index as meaning_order,
+          m.noun_type, m.verb_type, m.comparison,
+          ex.id as example_id, ex.sentence, ex.translation, 
+          ex.is_context_sentence, ex.order_index as example_order
+        FROM entries e
+        LEFT JOIN meanings m ON e.id = m.entry_id
+        LEFT JOIN examples ex ON m.id = ex.meaning_id
+        WHERE e.id IN (${placeholders})
+        ORDER BY e.id, COALESCE(m.order_index, 0), COALESCE(ex.order_index, 0)
+      `;
+
+      const rows = await db.prepare(query).all(...ids) as JoinedEntryRow[];
+      
+      // Get map of entries
+      const entriesMap = this.constructEntriesMapFromJoinedRows(rows);
+      
+      // Map back to original IDs to preserve order
+      return ids
+        .map(id => entriesMap.get(id))
+        .filter((entry): entry is DictionaryEntry => entry !== undefined);
+
+    } catch (error) {
+      console.error('Error getting entries by IDs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Build DictionaryEntry from joined query results efficiently (single entry)
    */
   private constructEntryFromJoinedRows(rows: JoinedEntryRow[]): DictionaryEntry {
-    const firstRow = rows[0];
-    
-    // Parse part_of_speech
-    let partOfSpeech: string | string[];
-    try {
-      partOfSpeech = firstRow.part_of_speech ? JSON.parse(firstRow.part_of_speech) : 'unknown';
-    } catch {
-      partOfSpeech = firstRow.part_of_speech || 'unknown';
-    }
+    const map = this.constructEntriesMapFromJoinedRows(rows);
+    const entry = map.values().next().value;
+    if (!entry) throw new Error('Failed to construct entry from rows');
+    return entry;
+  }
 
-    // Group by meanings using Map for better performance
-    const meaningsMap = new Map();
-    const processedExamples = new Set<string>(); // Prevent duplicate examples
+  /**
+   * Build Map of DictionaryEntries from joined query results
+   */
+  private constructEntriesMapFromJoinedRows(rows: JoinedEntryRow[]): Map<number, DictionaryEntry> {
+    const entriesMap = new Map<number, any>();
     
-    rows.forEach(row => {
-      if (!row.meaning_id) return; // Skip if no meanings
-      
-      if (!meaningsMap.has(row.meaning_id)) {
-        meaningsMap.set(row.meaning_id, {
-          definition: row.definition,
-          grammar: {
-            noun_type: row.noun_type || undefined,
-            verb_type: row.verb_type || undefined,
-            comparison: row.comparison || undefined,
+    // First pass: Group basic entry data and meanings
+    for (const row of rows) {
+      if (!entriesMap.has(row.id)) {
+        // Parse part_of_speech
+        let partOfSpeech: string | string[];
+        try {
+          partOfSpeech = row.part_of_speech ? JSON.parse(row.part_of_speech) : 'unknown';
+        } catch {
+          partOfSpeech = row.part_of_speech || 'unknown';
+        }
+
+        entriesMap.set(row.id, {
+          metadata: {
+            source_language: row.source_language,
+            target_language: row.target_language,
+            definition_language: row.definition_language,
+            has_context: Boolean(row.has_context),
+            context_sentence: row.context_sentence || undefined,
           },
-          examples: []
+          headword: row.headword,
+          part_of_speech: partOfSpeech,
+          meaningsMap: new Map(), // Temp storage for meanings
         });
       }
-      
-      if (row.example_id && row.sentence) {
-        const meaning = meaningsMap.get(row.meaning_id);
-        const exampleKey = `${row.meaning_id}-${row.sentence}`;
-        
-        // Avoid duplicate examples
-        if (!processedExamples.has(exampleKey)) {
-          processedExamples.add(exampleKey);
-          meaning.examples.push({
-            sentence: row.sentence,
-            translation: row.translation || undefined,
-            is_context_sentence: Boolean(row.is_context_sentence),
+
+      if (row.meaning_id) {
+        const entry = entriesMap.get(row.id);
+        if (!entry.meaningsMap.has(row.meaning_id)) {
+          entry.meaningsMap.set(row.meaning_id, {
+            definition: row.definition,
+            grammar: {
+              noun_type: row.noun_type || undefined,
+              verb_type: row.verb_type || undefined,
+              comparison: row.comparison || undefined,
+            },
+            examples: [],
+            processedExamples: new Set<string>() // Prevent dupes
           });
         }
-      }
-    });
 
-    return {
-      metadata: {
-        source_language: firstRow.source_language,
-        target_language: firstRow.target_language,
-        definition_language: firstRow.definition_language,
-        has_context: Boolean(firstRow.has_context),
-        context_sentence: firstRow.context_sentence || undefined,
-      },
-      headword: firstRow.headword,
-      part_of_speech: partOfSpeech,
-      meanings: Array.from(meaningsMap.values()),
-    };
+        if (row.example_id && row.sentence) {
+          const meaning = entry.meaningsMap.get(row.meaning_id);
+          const exampleKey = `${row.example_id}-${row.sentence}`;
+          
+          if (!meaning.processedExamples.has(exampleKey)) {
+            meaning.processedExamples.add(exampleKey);
+            meaning.examples.push({
+              sentence: row.sentence,
+              translation: row.translation || undefined,
+              is_context_sentence: Boolean(row.is_context_sentence),
+            });
+          }
+        }
+      }
+    }
+
+    // Convert matching temporary structures to final Map
+    const resultMap = new Map<number, DictionaryEntry>();
+    
+    entriesMap.forEach((entry, id) => {
+      const meanings = Array.from(entry.meaningsMap.values()).map((m: any) => {
+        // Clean up temp properties
+        const { processedExamples, ...meaningData } = m;
+        return meaningData;
+      });
+      
+      resultMap.set(id, {
+        metadata: entry.metadata,
+        headword: entry.headword,
+        part_of_speech: entry.part_of_speech,
+        meanings
+      });
+    });
+    
+    return resultMap;
   }
 
   /**
