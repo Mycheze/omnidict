@@ -103,10 +103,8 @@ export class SearchRepository {
         const rows = await mainStmt.all(...params) as { id: number }[];
         
         // Construct entries efficiently
-        for (const row of rows) {
-          const entry = await this.entryRepo.getEntryById(row.id);
-          if (entry) entries.push(entry);
-        }
+        const ids = rows.map(r => r.id);
+        entries = await this.entryRepo.getEntriesByIds(ids);
       }
 
       return {
@@ -144,16 +142,10 @@ export class SearchRepository {
         offset                // OFFSET
       ) as Array<{ id: number; headword: string; rank_score: number }>;
 
-      // Get full entry data for each result
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.entryRepo.getEntryById(row.id);
-        if (entry) {
-          entries.push(entry);
-        }
-      }
-
-      return entries;
+      // Get full entry data for each result efficiently
+      const ids = rows.map(r => r.id);
+      return this.entryRepo.getEntriesByIds(ids);
+      
     } catch (error) {
       console.error('Error in ranked search:', error);
       return [];
@@ -266,11 +258,8 @@ export class SearchRepository {
       const mainStmt = db.prepare(mainQuery);
       const rows = await mainStmt.all(...params) as { id: number }[];
       
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.entryRepo.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
+      const ids = rows.map(r => r.id);
+      const entries = await this.entryRepo.getEntriesByIds(ids);
 
       return {
         entries,
@@ -326,13 +315,9 @@ export class SearchRepository {
       const stmt = db.prepare(query);
       const rows = await stmt.all(...params) as Array<{ id: number }>;
       
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.entryRepo.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
-      
-      return entries;
+      const ids = rows.map(r => r.id);
+      return this.entryRepo.getEntriesByIds(ids);
+
     } catch (error) {
       console.error('Error in content search:', error);
       return [];
@@ -440,11 +425,8 @@ export class SearchRepository {
       const mainStmt = db.prepare(mainQuery);
       const rows = await mainStmt.all(...params) as { id: number }[];
       
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.entryRepo.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
+      const ids = rows.map(r => r.id);
+      const entries = await this.entryRepo.getEntriesByIds(ids);
 
       return {
         entries,
@@ -504,13 +486,9 @@ export class SearchRepository {
       const stmt = db.prepare(query);
       const rows = await stmt.all(...params) as Array<{ id: number }>;
       
-      const entries: DictionaryEntry[] = [];
-      for (const row of rows) {
-        const entry = await this.entryRepo.getEntryById(row.id);
-        if (entry) entries.push(entry);
-      }
-      
-      return entries;
+      const ids = rows.map(r => r.id);
+      return this.entryRepo.getEntriesByIds(ids);
+
     } catch (error) {
       console.error('Error getting similar entries:', error);
       return [];

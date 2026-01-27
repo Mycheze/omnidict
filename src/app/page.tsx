@@ -44,6 +44,8 @@ export default function DictionaryPage() {
   const context = useDictionaryStore((state) => state.context);
   const clearContext = useDictionaryStore(useCallback((state) => state.clearContext, []));
   const setSearchResults = useDictionaryStore((state) => state.setSearchResults);
+  const entries = useDictionaryStore((state) => state.entries);
+  const recentEntries = useDictionaryStore((state) => state.recentEntries);
 
   // Dictionary hook
   const {
@@ -57,6 +59,8 @@ export default function DictionaryPage() {
     getFilteredRecentEntries,
     getEntriesForCurrentLanguages,
     loadEntriesPaginated,
+    resetForLanguageChange,
+    totalEntries,
   } = useDictionary();
 
   // Auto-connect to Anki
@@ -76,9 +80,10 @@ export default function DictionaryPage() {
       currentLanguageRef.current = languagePair;
       
       // Load initial entries for new language pair
-      loadEntriesPaginated(1, 200, true);
+      resetForLanguageChange();
+      loadEntriesPaginated(1, 50, true);
     }
-  }, [languagePair, loadEntriesPaginated]);
+  }, [languagePair, loadEntriesPaginated, resetForLanguageChange]);
 
   // Search effect - only filter when there's a search term
   useEffect(() => {
@@ -98,35 +103,37 @@ export default function DictionaryPage() {
   }, [searchTerm, searchEntries, setSearchResults]);
 
   // Get current entries and recent entries
-  const { filteredEntries, recentEntries } = useMemo(() => {
-    const filtered = getEntriesForCurrentLanguages();
-    const recent = getFilteredRecentEntries();
-    return { filteredEntries: filtered, recentEntries: recent };
-  }, [getEntriesForCurrentLanguages, getFilteredRecentEntries]);
+  // Note: getFilteredRecentEntries now internally checks language to be safe, though store might have mixed
+  // We use useMemo to avoid recalculating on every render unless deps change
+  const filteredRecentEntries = useMemo(() => {
+    return getFilteredRecentEntries();
+  }, [getFilteredRecentEntries]);
 
   // Get entries to display based on search
   const entriesToShow = useMemo(() => {
-    return searchTerm.trim() ? searchResults.entries : filteredEntries;
-  }, [searchTerm, searchResults.entries, filteredEntries]);
+    // If there is a search term, show search results
+    // Otherwise show the loaded entries list (pagination)
+    return searchTerm.trim() ? searchResults.entries : entries;
+  }, [searchTerm, searchResults.entries, entries]);
+
+  // Handler for Load More
+  const handleLoadMoreEntries = useCallback(async () => {
+    if (!loading) {
+      console.log('📚 Loading more entries...');
+      // Calculate NEXT page based on current entries count
+      // If we have 50 entries, we played page 1. We want page 2.
+      // Math.ceil(50 / 50) + 1 = 1 + 1 = 2.
+      // If we have 100 entries, we want page 3.
+      const nextPage = Math.ceil(entries.length / 50) + 1;
+      await loadEntriesPaginated(nextPage, 50, false);
+    }
+  }, [loading, entries.length, loadEntriesPaginated]);
 
   console.log('📊 Current state:');
   console.log('  - Language pair:', languagePair);
-  console.log('  - Filtered entries:', filteredEntries.length);
-  console.log('  - Recent entries:', recentEntries.length);
+  console.log('  - Loaded entries:', entries.length);
+  console.log('  - Recent entries:', filteredRecentEntries.length);
   console.log('  - Entries to show:', entriesToShow.length);
-
-  // Ensure entries load on mount (fallback) - after filteredEntries is declared
-  useEffect(() => {
-    console.log('🚀 Mount effect - checking if entries need loading');
-    console.log('  - Filtered entries count:', filteredEntries.length);
-    console.log('  - Language pair:', languagePair);
-    
-    // If no entries loaded and we have a valid language pair, force load
-    if (filteredEntries.length === 0 && languagePair && languagePair !== '-') {
-      console.log('🔄 Force loading entries on mount for:', languagePair);
-      loadEntriesPaginated(1, 200, true);
-    }
-  }, [filteredEntries.length, languagePair, loadEntriesPaginated]);
 
   // HANDLERS
   const handleSearchEntry = useCallback((headword: string) => {
@@ -193,15 +200,6 @@ export default function DictionaryPage() {
   const handleClearSearch = useCallback(() => {
     setSearchInput('');
   }, []);
-
-  // Load more entries when user clicks "Load More"
-  const handleLoadMoreEntries = useCallback(async () => {
-    if (!loading) {
-      console.log('📚 Loading more entries...');
-      const currentPage = Math.floor(filteredEntries.length / 50) + 1;
-      await loadEntriesPaginated(currentPage, 50, false);
-    }
-  }, [loading, filteredEntries.length, loadEntriesPaginated]);
 
   const darkMode = useSettingsStore((state) => state.preferences.darkMode);
   const updatePreferences = useSettingsStore((state) => state.updatePreferences);
@@ -491,17 +489,17 @@ export default function DictionaryPage() {
             </Card>
 
             {/* Recent Lookups */}
-            {recentEntries.length > 0 && (
+            {filteredRecentEntries.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center">
                     <History className="h-5 w-5 mr-2" />
-                    Recent ({recentEntries.length})
+                    Recent ({filteredRecentEntries.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-1">
-                    {recentEntries.map((entry, index) => (
+                    {filteredRecentEntries.map((entry, index) => (
                       <button
                         key={`recent-${entry.headword}-${index}`}
                         onClick={() => handleSearchEntry(entry.headword)}
@@ -525,13 +523,8 @@ export default function DictionaryPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center">
                   <BookOpen className="h-5 w-5 mr-2" />
-                  Dictionary ({filteredEntries.length} loaded)
+                  Dictionary ({searchTerm.trim() ? searchResults.total : totalEntries})
                 </CardTitle>
-                {searchTerm.trim() && (
-                  <p className="text-sm text-muted-foreground">
-                    Showing {entriesToShow.length} filtered results
-                  </p>
-                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-1 max-h-96 overflow-y-auto">
@@ -554,14 +547,19 @@ export default function DictionaryPage() {
                       
                       {/* Load More Button */}
                       {!searchTerm.trim() && !loading && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleLoadMoreEntries}
-                          className="w-full mt-2"
-                        >
-                          Load More Entries
-                        </Button>
+                        <div className="pt-4 text-center">
+                          <p className="text-sm text-muted-foreground mb-2">
+                             Showing {entries.length} of {totalEntries} entries
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleLoadMoreEntries}
+                            className="w-full"
+                          >
+                            Load More Entries
+                          </Button>
+                        </div>
                       )}
                     </>
                   ) : loading ? (
@@ -571,6 +569,13 @@ export default function DictionaryPage() {
                   ) : (
                     <div className="text-sm text-muted-foreground p-4 text-center">
                       {searchTerm.trim() ? 'No entries found matching your search.' : 'No entries yet for this language combination.'}
+                    </div>
+                  )}
+
+                  {/* Search Results Count (Footer) */}
+                  {searchTerm.trim() && entriesToShow.length > 0 && (
+                    <div className="pt-4 text-center text-sm text-muted-foreground border-t mt-4">
+                       Found {searchResults.total} results
                     </div>
                   )}
                 </div>

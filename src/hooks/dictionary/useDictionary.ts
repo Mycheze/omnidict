@@ -4,31 +4,16 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useApiQueueStore } from '@/stores/apiQueueStore';
 import { DictionaryEntry, SearchFilters, ApiResponse, SearchResult } from '@/lib/types';
 
-// Helper function to check if entry matches language settings
-const entryMatchesLanguages = (
-  entry: DictionaryEntry, 
-  sourceLanguage: string, 
-  targetLanguage: string
-): boolean => {
-  return entry.metadata.source_language === sourceLanguage && 
-         entry.metadata.target_language === targetLanguage;
-};
-
-// Detect if we're using remote database
-const isRemoteDatabase = () => {
-  return process.env.USE_LOCAL_DB !== 'true';
-};
-
 export function useDictionary() {
   // Access store data with simple selectors to avoid subscription loops
   const entries = useDictionaryStore((state) => state.entries);
+  const totalEntries = useDictionaryStore((state) => state.totalEntries);
   const currentEntry = useDictionaryStore((state) => state.currentEntry);
   const recentEntries = useDictionaryStore((state) => state.recentEntries);
   const searchResults = useDictionaryStore((state) => state.searchResults);
   const searchLoading = useDictionaryStore((state) => state.searchLoading);
   const loading = useDictionaryStore((state) => state.loading);
   const error = useDictionaryStore((state) => state.error);
-  const allEntriesLoaded = useDictionaryStore((state) => state.allEntriesLoaded);
   
   // Access store actions
   const setCurrentEntry = useDictionaryStore((state) => state.setCurrentEntry);
@@ -40,38 +25,21 @@ export function useDictionary() {
   const addEntry = useDictionaryStore((state) => state.addEntry);
   const updateEntry = useDictionaryStore((state) => state.updateEntry);
   const removeEntry = useDictionaryStore((state) => state.removeEntry);
-  const setAllEntriesLoaded = useDictionaryStore((state) => state.setAllEntriesLoaded);
   const setEntries = useDictionaryStore((state) => state.setEntries);
+  const setTotalEntries = useDictionaryStore((state) => state.setTotalEntries);
 
   // Get current languages - use stable selector
   const languages = useSettingsStore((state) => state.languages);
   
   const { addToQueue, startProcessing, completeRequest, errorRequest } = useApiQueueStore();
 
-  // Loading state management to prevent simultaneous loads
+  // Loading state management
   const loadingRef = useRef({
-    isLoadingEntries: false,
     isLoadingChunk: false,
-    loadedLanguagePair: '',
   });
 
   // Set to track loaded entries and prevent duplicates
   const loadedEntriesRef = useRef(new Set<string>());
-
-  /**
-   * Filter entries by current language settings - done here to avoid store circular deps
-   */
-  const getFilteredRecentEntries = useCallback(() => {
-    return recentEntries.filter(entry =>
-      entryMatchesLanguages(entry, languages.sourceLanguage, languages.targetLanguage)
-    );
-  }, [recentEntries, languages.sourceLanguage, languages.targetLanguage]);
-
-  const getEntriesForCurrentLanguages = useCallback(() => {
-    return entries.filter(entry =>
-      entryMatchesLanguages(entry, languages.sourceLanguage, languages.targetLanguage)
-    );
-  }, [entries, languages.sourceLanguage, languages.targetLanguage]);
 
   /**
    * Generic async API handler with queue integration
@@ -111,7 +79,7 @@ export function useDictionary() {
   }, [addToQueue, startProcessing, completeRequest, errorRequest, languages]);
 
   /**
-   * Search for entries - this is for filtering the dictionary list (synchronous)
+   * Search for entries - this is for filtering the dictionary list (server-side)
    */
   const searchEntries = useCallback(async (searchTerm: string) => {
     if (!searchTerm.trim()) {
@@ -139,7 +107,7 @@ export function useDictionary() {
             targetLanguage: languages.targetLanguage,
           },
           page: 1,
-          pageSize: 100,
+          pageSize: 50,
         }),
       });
 
@@ -341,18 +309,12 @@ export function useDictionary() {
   }, [languages, currentEntry, removeEntry, setCurrentEntry, setError, processApiRequest]);
 
   /**
-   * OPTIMIZED: Smart loading strategy based on database type
+   * Load entries paginated - Simple implementation that trusts the API
    */
-  const loadEntriesPaginated = useCallback(async (page = 1, pageSize = 200, reset = false): Promise<SearchResult> => {
+  const loadEntriesPaginated = useCallback(async (page = 1, pageSize = 50, reset = false): Promise<SearchResult> => {
     // Prevent simultaneous loading
     if (loadingRef.current.isLoadingChunk) {
-      console.log('Already loading chunk, skipping...');
-      return {
-        entries: [],
-        total: 0,
-        page: 1,
-        pageSize: 200
-      };
+      return { entries: [], total: 0, page: 1, pageSize };
     }
 
     loadingRef.current.isLoadingChunk = true;
@@ -360,9 +322,6 @@ export function useDictionary() {
     setError(null);
 
     try {
-      // OPTIMIZATION: Use larger page size for remote databases
-      const optimizedPageSize = isRemoteDatabase() ? Math.max(pageSize, 500) : pageSize;
-      
       const response = await fetch('/api/entries/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -372,7 +331,7 @@ export function useDictionary() {
             targetLanguage: languages.targetLanguage,
           },
           page,
-          pageSize: optimizedPageSize,
+          pageSize,
         }),
       });
 
@@ -394,6 +353,7 @@ export function useDictionary() {
           loadedEntriesRef.current.add(entryKey);
         });
         setEntries(result.data.entries);
+        setTotalEntries(result.data.total); // Update total count
       } else {
         // Append for subsequent pages, filtering out duplicates
         const newEntries: DictionaryEntry[] = [];
@@ -413,6 +373,8 @@ export function useDictionary() {
           const currentStoreEntries = useDictionaryStore.getState().entries;
           setEntries([...currentStoreEntries, ...newEntries]);
         }
+        // Always update total even on append, in case it changed
+        setTotalEntries(result.data.total);
       }
 
       return result.data;
@@ -420,102 +382,12 @@ export function useDictionary() {
       const errorMessage = error instanceof Error ? error.message : 'Network error while loading entries';
       setError(errorMessage);
       console.error('Load entries error:', error);
-      return {
-        entries: [],
-        total: 0,
-        page: 1,
-        pageSize: 200
-      };
+      return { entries: [], total: 0, page, pageSize };
     } finally {
       setLoading(false);
       loadingRef.current.isLoadingChunk = false;
     }
-  }, [setLoading, setError, languages, setEntries]);
-
-  /**
-   * OPTIMIZED: Smart entry loading based on database type
-   */
-  const loadAllEntriesOptimized = useCallback(async () => {
-    const languagePair = `${languages.sourceLanguage}-${languages.targetLanguage}`;
-    
-    // Prevent simultaneous loads and check if already loaded for this language pair
-    if (loadingRef.current.isLoadingEntries) {
-      console.log('Already loading entries, skipping...');
-      return;
-    }
-
-    if (loadingRef.current.loadedLanguagePair === languagePair && allEntriesLoaded) {
-      console.log('Entries already loaded for current language pair');
-      return;
-    }
-
-    loadingRef.current.isLoadingEntries = true;
-    loadingRef.current.loadedLanguagePair = languagePair;
-    
-    setAllEntriesLoaded(false);
-    
-    try {
-      console.log(`Starting optimized loading for ${languagePair}...`);
-      
-      if (isRemoteDatabase()) {
-        // REMOTE DATABASE: Load larger chunks, fewer requests
-        console.log('🌐 Remote database detected - using optimized loading strategy');
-        
-        const LARGE_CHUNK_SIZE = 1000; // Much larger chunks for remote
-        const MAX_PAGES = 10; // Limit to prevent infinite loading
-        
-        let page = 1;
-        let hasMore = true;
-        let totalLoaded = 0;
-        
-        while (hasMore && page <= MAX_PAGES) {
-          const result = await loadEntriesPaginated(page, LARGE_CHUNK_SIZE, page === 1);
-          
-          const actualNewEntries = result.entries.length;
-          totalLoaded += actualNewEntries;
-          
-          console.log(`🌐 Remote page ${page}: loaded ${actualNewEntries} entries (total: ${totalLoaded})`);
-          
-          // For remote: stop if we get less than requested (end of data)
-          hasMore = actualNewEntries === LARGE_CHUNK_SIZE && result.total > page * LARGE_CHUNK_SIZE;
-          page++;
-          
-          if (!hasMore) {
-            console.log(`🌐 Remote loading complete: ${totalLoaded} entries`);
-          }
-        }
-      } else {
-        // LOCAL DATABASE: Use original strategy
-        console.log('💽 Local database detected - using standard loading strategy');
-        
-        const CHUNK_SIZE = 200;
-        let page = 1;
-        let hasMore = true;
-        let totalLoaded = 0;
-        
-        while (hasMore && page <= 25) {
-          const result = await loadEntriesPaginated(page, CHUNK_SIZE, page === 1);
-          
-          const actualNewEntries = result.entries.length;
-          totalLoaded += actualNewEntries;
-          
-          console.log(`💽 Local page ${page}: loaded ${actualNewEntries} entries`);
-          
-          hasMore = actualNewEntries === CHUNK_SIZE && result.total > page * CHUNK_SIZE;
-          page++;
-        }
-      }
-      
-      setAllEntriesLoaded(true);
-      console.log(`✅ Loading completed for ${languagePair}`);
-      
-    } catch (error) {
-      console.error('Error loading entries in chunks:', error);
-      setError('Failed to load dictionary entries');
-    } finally {
-      loadingRef.current.isLoadingEntries = false;
-    }
-  }, [loadEntriesPaginated, setAllEntriesLoaded, setError, languages, allEntriesLoaded]);
+  }, [setLoading, setError, languages, setEntries, setTotalEntries]);
 
   /**
    * Reset dictionary when languages change
@@ -524,15 +396,12 @@ export function useDictionary() {
     console.log('Resetting for language change...');
     
     // Clear loading state
-    loadingRef.current.isLoadingEntries = false;
     loadingRef.current.isLoadingChunk = false;
-    loadingRef.current.loadedLanguagePair = '';
     
     // Clear duplicate tracking
     loadedEntriesRef.current.clear();
     
     // Reset store state
-    setAllEntriesLoaded(false);
     setEntries([]);
     setCurrentEntry(null);
     setSearchResults({
@@ -541,18 +410,35 @@ export function useDictionary() {
       page: 1,
       pageSize: 50,
     });
-  }, [setAllEntriesLoaded, setEntries, setCurrentEntry, setSearchResults]);
+  }, [setEntries, setCurrentEntry, setSearchResults]);
+
+  /**
+   * Helper to get recent entries filtered by current language pair
+   */
+  const getFilteredRecentEntries = useCallback(() => {
+    return recentEntries.filter(entry => 
+      entry.metadata.source_language === languages.sourceLanguage && 
+      entry.metadata.target_language === languages.targetLanguage
+    );
+  }, [recentEntries, languages]);
+
+  /**
+   * Helper to get entries for current language (already filtered by loader, but for consistency)
+   */
+  const getEntriesForCurrentLanguages = useCallback(() => {
+    return entries;
+  }, [entries]);
 
   return {
     // State
     entries,
+    totalEntries,
     currentEntry,
     recentEntries,
     searchResults,
     searchLoading,
     loading,
     error,
-    allEntriesLoaded,
 
     // Core actions
     searchEntries,
@@ -566,12 +452,8 @@ export function useDictionary() {
 
     // Optimized loading actions
     loadEntriesPaginated,
-    loadAllEntriesOptimized,
     
-    // Keep legacy method for compatibility
-    loadAllEntries: loadAllEntriesOptimized,
-    
-    // Filtered data selectors - these are now safe functions
+    // Helpers
     getFilteredRecentEntries,
     getEntriesForCurrentLanguages,
   };
