@@ -25,6 +25,23 @@ export function ContextSearch({ onWordSelect, onContextualSearch, className }: C
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isHovering, setIsHovering] = useState(false);
 
+  // Load expanded state from local storage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('omnidict-context-expanded');
+      if (savedState !== null) {
+        setContextExpanded(savedState === 'true');
+      }
+    }
+  }, [setContextExpanded]);
+
+  // Save expanded state to local storage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('omnidict-context-expanded', String(context.isContextExpanded));
+    }
+  }, [context.isContextExpanded]);
+
   // Auto-focus when expanded
   useEffect(() => {
     if (context.isContextExpanded && textareaRef.current) {
