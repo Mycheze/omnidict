@@ -198,6 +198,18 @@ class DatabaseManager {
     return this.searchRepo!.getSearchStats(sourceLanguage, targetLanguage);
   }
 
+  public async getPaginationIndex(
+    filters: {
+      searchTerm?: string;
+      sourceLanguage?: string;
+      targetLanguage?: string;
+    },
+    pageSize = 50
+  ): Promise<Array<{ page: number; startHeadword: string; endHeadword: string }>> {
+    await this.ensureReady();
+    return this.searchRepo!.getPaginationIndex(filters, pageSize);
+  }
+
   // ===== CACHE OPERATIONS =====
 
   public async cacheLemma(word: string, lemma: string, targetLanguage: string): Promise<void> {

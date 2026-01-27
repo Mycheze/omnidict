@@ -11,6 +11,7 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { AnkiExportButton } from '@/components/anki/AnkiExportButton';
 import { AnkiUpdateButton } from '@/components/anki/AnkiUpdateButton';
 import { ContextSearch } from '@/components/ContextSearch';
+import { PaginationGrid } from '@/components/PaginationGrid';
 import { useImmediateDebounce } from '@/hooks/shared/useDebounce';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useDictionaryStore } from '@/stores/dictionaryStore';
@@ -59,6 +60,7 @@ export default function DictionaryPage() {
     getFilteredRecentEntries,
     getEntriesForCurrentLanguages,
     loadEntriesPaginated,
+    loadPaginationIndex,
     resetForLanguageChange,
     totalEntries,
   } = useDictionary();
@@ -82,8 +84,9 @@ export default function DictionaryPage() {
       // Load initial entries for new language pair
       resetForLanguageChange();
       loadEntriesPaginated(1, 50, true);
+      loadPaginationIndex();
     }
-  }, [languagePair, loadEntriesPaginated, resetForLanguageChange]);
+  }, [languagePair, loadEntriesPaginated, resetForLanguageChange, loadPaginationIndex]);
 
   // Search effect - only filter when there's a search term
   useEffect(() => {
@@ -527,7 +530,7 @@ export default function DictionaryPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-1 max-h-96 overflow-y-auto">
+                <div className="space-y-1 max-h-96 overflow-y-auto dictionary-list-top">
                   {entriesToShow.length > 0 ? (
                     <>
                       {entriesToShow.map((entry, index) => (
@@ -545,20 +548,32 @@ export default function DictionaryPage() {
                         </button>
                       ))}
                       
-                      {/* Load More Button */}
+                      {/* Pagination Grid (Replacing Load More) */}
                       {!searchTerm.trim() && !loading && (
-                        <div className="pt-4 text-center">
-                          <p className="text-sm text-muted-foreground mb-2">
-                             Showing {entries.length} of {totalEntries} entries
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleLoadMoreEntries}
-                            className="w-full"
-                          >
-                            Load More Entries
-                          </Button>
+                        <div className="pt-8 border-t mt-4">
+                          <PaginationGrid
+                            pages={searchResults.paginationIndex || []}
+                            currentPage={searchResults.page}
+                            onPageSelect={(page) => {
+                              console.log('📄 Jumping to page:', page);
+                              loadEntriesPaginated(page, 50, true); // true = reset (replace) entries
+                              // Scroll to top of list
+                              const listTop = document.querySelector('.dictionary-list-top');
+                              if (listTop) listTop.scrollTop = 0;
+                            }}
+                          />
+                          
+                          {/* Fallback Load More if grid is empty/fails, or just small number of entries */}
+                          {(!searchResults.paginationIndex || searchResults.paginationIndex.length <= 1) && entries.length < totalEntries && (
+                             <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleLoadMoreEntries}
+                              className="w-full mt-4"
+                            >
+                              Load More Entries
+                            </Button>
+                          )}
                         </div>
                       )}
                     </>

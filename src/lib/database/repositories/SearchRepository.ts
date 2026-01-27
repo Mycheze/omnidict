@@ -578,4 +578,70 @@ export class SearchRepository {
       };
     }
   }
+
+  /**
+   * Get pagination index (start/end headwords for each page)
+   */
+  public async getPaginationIndex(
+    filters: {
+      searchTerm?: string;
+      sourceLanguage?: string;
+      targetLanguage?: string;
+    },
+    pageSize = 50
+  ): Promise<Array<{ page: number; startHeadword: string; endHeadword: string }>> {
+    try {
+      const db = this.core.getDatabase();
+      
+      let whereClause = 'WHERE 1=1';
+      const params: SqlParam[] = [];
+
+      if (filters.sourceLanguage) {
+        whereClause += ' AND source_language = ?';
+        params.push(filters.sourceLanguage);
+      }
+      
+      if (filters.targetLanguage) {
+        whereClause += ' AND target_language = ?';
+        params.push(filters.targetLanguage);
+      }
+
+      // If search term exists, filter by it too
+      if (filters.searchTerm) {
+        const term = filters.searchTerm.trim();
+        whereClause += ' AND (headword LIKE ? COLLATE NOCASE OR headword LIKE ? COLLATE NOCASE)';
+        params.push(`${term}%`, `%${term}%`);
+      }
+
+      // SQLite query to calculate page ranges efficiently
+      // We calculate row number, determine page, and then group by page to get min/max headwords
+      // IMPORTANT: Cast to INTEGER to ensure integer division behavior
+      const query = `
+        WITH PagedEntries AS (
+          SELECT 
+            headword,
+            CAST(((ROW_NUMBER() OVER (ORDER BY headword COLLATE NOCASE, created_at DESC) - 1) / ?) AS INTEGER) + 1 as page_num
+          FROM entries
+          ${whereClause}
+        )
+        SELECT 
+          page_num as page,
+          MIN(headword) as startHeadword,
+          MAX(headword) as endHeadword
+        FROM PagedEntries
+        GROUP BY page_num
+        ORDER BY page_num
+      `;
+      
+      const allParams = [pageSize, ...params];
+
+      const stmt = db.prepare(query);
+      const rows = await stmt.all(...allParams) as Array<{ page: number; startHeadword: string; endHeadword: string }>;
+      
+      return rows;
+    } catch (error) {
+      console.error('Error getting pagination index:', error);
+      return [];
+    }
+  }
 }

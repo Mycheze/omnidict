@@ -374,8 +374,16 @@ export function useDictionary() {
           setEntries([...currentStoreEntries, ...newEntries]);
         }
         // Always update total even on append, in case it changed
+        // Always update total even on append, in case it changed
         setTotalEntries(result.data.total);
       }
+      
+      // Update pagination state
+      setSearchResults({
+        ...useDictionaryStore.getState().searchResults,
+        page,
+        total: result.data.total
+      });
 
       return result.data;
     } catch (error) {
@@ -387,7 +395,36 @@ export function useDictionary() {
       setLoading(false);
       loadingRef.current.isLoadingChunk = false;
     }
-  }, [setLoading, setError, languages, setEntries, setTotalEntries]);
+  }, [setLoading, setError, languages, setEntries, setTotalEntries, setSearchResults]);
+
+  /**
+   * Load pagination index for current filters
+   */
+  const loadPaginationIndex = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dictionary/pagination-index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceLanguage: languages.sourceLanguage,
+          targetLanguage: languages.targetLanguage,
+          searchTerm: useDictionaryStore.getState().searchResults.total > 0 ? undefined : undefined // TODO: handle search term if needed, for now main list
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to load pagination index');
+      const result = await response.json();
+      
+      if (result.success) {
+        setSearchResults({
+          ...useDictionaryStore.getState().searchResults,
+          paginationIndex: result.data
+        });
+      }
+    } catch (error) {
+      console.error('Error loading pagination index:', error);
+    }
+  }, [languages, setSearchResults]);
 
   /**
    * Reset dictionary when languages change
@@ -452,6 +489,7 @@ export function useDictionary() {
 
     // Optimized loading actions
     loadEntriesPaginated,
+    loadPaginationIndex,
     
     // Helpers
     getFilteredRecentEntries,

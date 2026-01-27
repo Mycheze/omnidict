@@ -24,6 +24,7 @@ interface DictionaryState {
     total: number;
     page: number;
     pageSize: number;
+    paginationIndex?: Array<{ page: number; startHeadword: string; endHeadword: string }>;
   };
 
   // Context-aware search state
@@ -47,6 +48,7 @@ interface DictionaryActions {
     total: number;
     page: number;
     pageSize: number;
+    paginationIndex?: Array<{ page: number; startHeadword: string; endHeadword: string }>;
   }) => void;
 
   setLoading: (loading: boolean) => void;
@@ -89,6 +91,7 @@ export const useDictionaryStore = create<DictionaryState & DictionaryActions>()(
       total: 0,
       page: 1,
       pageSize: 50,
+      paginationIndex: [],
     },
 
     // Context state
