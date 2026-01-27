@@ -544,58 +544,7 @@ class AIManager {
     }
   }
 
-  /**
-   * Validate a language name
-   */
-  public async validateLanguage(languageName: string): Promise<{ standardizedName: string; displayName: string }> {
-    try {
-      const prompt = await this.loadPrompt('language_validation_prompt.txt');
-      const processedPrompt = this.processPrompt(prompt, {
-        INPUT_LANGUAGE: languageName,
-      });
 
-      const response = await this.client.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "system",
-            content: "You are a language identification and standardization assistant. Return only valid JSON."
-          },
-          {
-            role: "user",
-            content: processedPrompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      });
-
-      const responseContent = response.choices[0]?.message?.content?.trim();
-      if (!responseContent) {
-        throw new Error('Empty response from AI');
-      }
-
-      try {
-        const result = JSON.parse(responseContent);
-        return {
-          standardizedName: result.standardized_name || languageName,
-          displayName: result.display_name || languageName,
-        };
-      } catch (parseError) {
-        console.error('Failed to parse language validation response:', parseError);
-        return {
-          standardizedName: languageName,
-          displayName: languageName,
-        };
-      }
-    } catch (error) {
-      console.error('Error validating language:', error);
-      return {
-        standardizedName: languageName,
-        displayName: languageName,
-      };
-    }
-  }
 
   /**
    * Load a prompt template from file

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
 import { validateLanguageRequest } from '@/lib/security/validation';
-import { DictionaryService } from '@/lib/services/DictionaryService';
 import { ApiResponse, LanguageValidationResponse } from '@/lib/types';
+import languages from '@/lib/languages.json';
 
 async function validateLanguageHandler(request: NextRequest) {
   // Validate and sanitize input
@@ -17,26 +17,35 @@ async function validateLanguageHandler(request: NextRequest) {
     return NextResponse.json(response, { status: 400 });
   }
 
-  console.log('Validating language:', inputLanguage);
-
-  const dictionaryService = DictionaryService.getInstance();
+  const query = inputLanguage.trim().toLowerCase();
+  console.log('Validating language against static list:', inputLanguage);
 
   try {
-    const result = await dictionaryService.validateLanguage(inputLanguage.trim());
+    // Find matching language
+    // We check against name (lowercase) or code (lowercase)
+    const match = languages.find(lang => 
+      lang.name.toLowerCase() === query || 
+      lang.code.toLowerCase() === query
+    );
 
-    if (!result.success) {
+    if (!match) {
       const response: ApiResponse = {
         success: false,
-        error: result.error || 'Language validation failed',
+        error: `Language "${inputLanguage}" not found in supported list.`,
       };
-      return NextResponse.json(response, { status: 500 });
+      return NextResponse.json(response, { status: 404 });
     }
 
-    console.log('Language validation result:', result.result);
+    console.log('Language found:', match.name);
+
+    const result: LanguageValidationResponse = {
+      standardizedName: match.name,
+      displayName: match.name, // Default display name is the standardized name
+    };
 
     const response: ApiResponse<LanguageValidationResponse> = {
       success: true,
-      data: result.result!,
+      data: result,
     };
 
     return NextResponse.json(response);
