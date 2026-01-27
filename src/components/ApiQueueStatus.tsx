@@ -9,7 +9,7 @@ import { useApiQueueStore, QueuedRequest } from '@/stores/apiQueueStore';
 type QueueDisplayState = 'minimized' | 'normal' | 'expanded';
 
 export function ApiQueueStatus() {
-  const [displayState, setDisplayState] = useState<QueueDisplayState>('normal');
+  const [displayState, setDisplayState] = useState<QueueDisplayState>('minimized');
   const [isHovering, setIsHovering] = useState(false);
   const { queue, activeRequests, completedRequests, removeFromQueue, clearCompleted } = useApiQueueStore();
 
