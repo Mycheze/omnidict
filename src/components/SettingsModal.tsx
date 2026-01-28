@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnkiSettings } from '@/components/anki/AnkiSettings';
 import { LanguageManagement } from '@/components/settings/LanguageManagement';
+import { AIModelSettings } from '@/components/settings/AIModelSettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = 'languages' | 'anki';
+type SettingsTab = 'languages' | 'anki' | 'ai-model';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('languages');
@@ -66,6 +67,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 >
                   Anki Integration
                 </button>
+                <button
+                  onClick={() => setActiveTab('ai-model')}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    activeTab === 'ai-model'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted'
+                  }`}
+                >
+                  AI Model
+                </button>
               </nav>
             </div>
 
@@ -73,6 +84,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <div className="flex-1 p-6 overflow-y-auto">
               {activeTab === 'languages' && <LanguageManagement />}
               {activeTab === 'anki' && <AnkiSettings />}
+              {activeTab === 'ai-model' && <AIModelSettings />}
             </div>
           </div>
         </Card>

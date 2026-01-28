@@ -13,6 +13,21 @@ export class DictionaryService {
 
   constructor() {
     this.db = DatabaseManager.getInstance();
+    // AI manager will be configured later based on user settings
+    this.ai = AIManager.getInstance();
+  }
+
+  /**
+   * Configure AIManager with user's AI provider settings
+   * This should be called before generating entries with specific provider settings
+   */
+  public configureAI(providerType: string, apiKey?: string, model?: string) {
+    AIManager.configure({
+      providerType: providerType as any,
+      apiKey,
+      model,
+    });
+    // Reinitialize AI manager with new configuration
     this.ai = AIManager.getInstance();
   }
 

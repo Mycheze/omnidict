@@ -23,6 +23,10 @@ export const EntryRequestSchema = z.object({
   sourceLanguage: LanguageSchema,
   targetLanguage: LanguageSchema,
   contextSentence: ContextSchema,
+  // AI configuration (optional)
+  providerType: z.string().optional(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
 });
 
 export const SearchRequestSchema = z.object({
