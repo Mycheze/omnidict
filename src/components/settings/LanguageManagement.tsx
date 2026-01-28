@@ -437,7 +437,7 @@ export function LanguageManagement() {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p><strong>How it works:</strong></p>
             <ul className="list-disc list-inside space-y-1 ml-4">
-              <li>Add languages in any language - AI will standardize them</li>
+              <li>Add languages by name or code (e.g., "French", "ja")</li>
               <li>Edit display names to show languages as you prefer</li>
               <li>Hide languages from dropdowns without deleting them</li>
               <li>Database languages are preserved and can't be deleted</li>

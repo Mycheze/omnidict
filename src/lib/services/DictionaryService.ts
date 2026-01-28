@@ -454,27 +454,7 @@ export class DictionaryService {
     }
   }
 
-  /**
-   * Validate a language name using AI
-   */
-  public async validateLanguage(
-    languageName: string
-  ): Promise<{ success: boolean; result?: { standardizedName: string; displayName: string }; error?: string }> {
-    try {
-      const result = await this.ai.validateLanguage(languageName);
-      
-      return {
-        success: true,
-        result,
-      };
-    } catch (error) {
-      console.error('Error in validateLanguage:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  }
+
 
   // ===== ANALYTICS OPERATIONS =====
 
