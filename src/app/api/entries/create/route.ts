@@ -7,12 +7,18 @@ import { ApiResponse, DictionaryEntry } from '@/lib/types';
 async function createEntryHandler(request: NextRequest) {
   // Validate and sanitize input
   const rawBody = await request.json();
-  const { word, sourceLanguage, targetLanguage, contextSentence } = validateEntryRequest(rawBody);
+  const { word, sourceLanguage, targetLanguage, contextSentence, providerType, apiKey, model } = validateEntryRequest(rawBody);
 
   console.log('Creating entry for:', word, `(${sourceLanguage} → ${targetLanguage})`, 
-              contextSentence ? 'with context' : 'without context');
+              contextSentence ? 'with context' : 'without context',
+              providerType ? `using ${providerType}/${model}` : '');
 
   const dictionaryService = DictionaryService.getInstance();
+
+  // Configure AI provider if specified
+  if (providerType) {
+    dictionaryService.configureAI(providerType, apiKey, model);
+  }
 
   try {
     const result = await dictionaryService.createEntry(

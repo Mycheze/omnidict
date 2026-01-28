@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { useDictionaryStore } from '@/stores/dictionaryStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useApiQueueStore } from '@/stores/apiQueueStore';
+import { useAIStore } from '@/stores/aiStore';
 import { DictionaryEntry, SearchFilters, ApiResponse, SearchResult } from '@/lib/types';
 
 export function useDictionary() {
@@ -30,6 +31,11 @@ export function useDictionary() {
 
   // Get current languages - use stable selector
   const languages = useSettingsStore((state) => state.languages);
+  
+  // Get AI settings - use stable selector
+  const selectedProvider = useAIStore((state) => state.selectedProvider);
+  const apiKeys = useAIStore((state) => state.apiKeys);
+  const selectedModels = useAIStore((state) => state.selectedModels);
   
   const { addToQueue, startProcessing, completeRequest, errorRequest } = useApiQueueStore();
 
@@ -181,6 +187,11 @@ export function useDictionary() {
           requestBody.contextSentence = contextSentence.trim();
         }
 
+        // Add AI configuration from settings
+        requestBody.providerType = selectedProvider;
+        requestBody.apiKey = apiKeys[selectedProvider];
+        requestBody.model = selectedModels[selectedProvider];
+
         const response = await fetch('/api/entries/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -213,7 +224,7 @@ export function useDictionary() {
     );
 
     return requestId;
-  }, [languages, addEntry, setCurrentEntry, addToRecentEntries, setError, processApiRequest]);
+  }, [languages, selectedProvider, apiKeys, selectedModels, addEntry, setCurrentEntry, addToRecentEntries, setError, processApiRequest]);
 
   /**
    * Create a context-aware entry
@@ -237,6 +248,10 @@ export function useDictionary() {
             headword,
             sourceLanguage: languages.sourceLanguage,
             targetLanguage: languages.targetLanguage,
+            // Add AI configuration from settings
+            providerType: selectedProvider,
+            apiKey: apiKeys[selectedProvider],
+            model: selectedModels[selectedProvider],
           }),
         });
 
@@ -260,7 +275,7 @@ export function useDictionary() {
     );
 
     return requestId;
-  }, [languages, updateEntry, setCurrentEntry, setError, processApiRequest]);
+  }, [languages, selectedProvider, apiKeys, selectedModels, updateEntry, setCurrentEntry, setError, processApiRequest]);
 
   /**
    * Delete an entry

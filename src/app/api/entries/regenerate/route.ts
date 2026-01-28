@@ -8,11 +8,14 @@ interface SimplifiedRegenerateRequest {
   headword: string;
   sourceLanguage: string;
   targetLanguage: string;
+  providerType?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 async function regenerateEntryHandler(request: NextRequest) {
   try {
-    const { headword, sourceLanguage, targetLanguage }: SimplifiedRegenerateRequest = await request.json();
+    const { headword, sourceLanguage, targetLanguage, providerType, apiKey, model }: SimplifiedRegenerateRequest = await request.json();
 
     if (!headword || !sourceLanguage || !targetLanguage) {
       const response: ApiResponse = {
@@ -22,7 +25,8 @@ async function regenerateEntryHandler(request: NextRequest) {
       return NextResponse.json(response, { status: 400 });
     }
 
-    console.log('Regenerating entry for:', headword, `(${sourceLanguage} → ${targetLanguage})`);
+    console.log('Regenerating entry for:', headword, `(${sourceLanguage} → ${targetLanguage})`,
+                providerType ? `using ${providerType}/${model}` : '');
 
     const db = DatabaseManager.getInstance();
     const ai = AIManager.getInstance();
@@ -45,6 +49,11 @@ async function regenerateEntryHandler(request: NextRequest) {
         error: 'Failed to delete existing entry',
       };
       return NextResponse.json(response, { status: 500 });
+    }
+
+    // Configure AI provider if specified
+    if (providerType) {
+      AIManager.configure({ providerType: providerType as any, apiKey, model });
     }
 
     // Generate new entry with variation
