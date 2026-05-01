@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { AIProviderType } from '@/lib/ai/providers/metadata';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { AIProviderType } from "@/lib/ai/providers/metadata";
 
 /**
  * AI Provider Settings
@@ -8,15 +8,20 @@ import { AIProviderType } from '@/lib/ai/providers/metadata';
 export interface AISettings {
   // Selected provider
   selectedProvider: AIProviderType;
-  
+
   // API keys per provider (not stored for DeepSeek)
   apiKeys: Partial<Record<AIProviderType, string>>;
-  
+
   // Selected model per provider
   selectedModels: Partial<Record<AIProviderType, string>>;
-  
+
   // Last test results per provider
-  lastTestResults: Partial<Record<AIProviderType, { success: boolean; message?: string; timestamp: number }>>;
+  lastTestResults: Partial<
+    Record<
+      AIProviderType,
+      { success: boolean; message?: string; timestamp: number }
+    >
+  >;
 }
 
 interface AIState extends AISettings {
@@ -24,19 +29,22 @@ interface AIState extends AISettings {
   setSelectedProvider: (provider: AIProviderType) => void;
   setApiKey: (provider: AIProviderType, apiKey: string) => void;
   setSelectedModel: (provider: AIProviderType, model: string) => void;
-  setTestResult: (provider: AIProviderType, result: { success: boolean; message?: string }) => void;
+  setTestResult: (
+    provider: AIProviderType,
+    result: { success: boolean; message?: string },
+  ) => void;
   clearApiKey: (provider: AIProviderType) => void;
   resetSettings: () => void;
 }
 
 const defaultSettings: AISettings = {
-  selectedProvider: 'deepseek',
+  selectedProvider: "deepseek",
   apiKeys: {},
   selectedModels: {
-    deepseek: 'deepseek-chat',
-    chatgpt: 'gpt-4o',
-    claude: 'claude-3-5-sonnet-20241022',
-    gemini: 'gemini-2.5-flash',
+    deepseek: "deepseek-v4-flash",
+    chatgpt: "gpt-4o",
+    claude: "claude-3-5-sonnet-20241022",
+    gemini: "gemini-2.5-flash",
   },
   lastTestResults: {},
 };
@@ -48,7 +56,7 @@ export const useAIStore = create<AIState>()(
 
       // Actions
       setSelectedProvider: (provider) => set({ selectedProvider: provider }),
-      
+
       setApiKey: (provider, apiKey) =>
         set((state) => ({
           apiKeys: {
@@ -56,7 +64,7 @@ export const useAIStore = create<AIState>()(
             [provider]: apiKey,
           },
         })),
-      
+
       setSelectedModel: (provider, model) =>
         set((state) => ({
           selectedModels: {
@@ -64,7 +72,7 @@ export const useAIStore = create<AIState>()(
             [provider]: model,
           },
         })),
-      
+
       setTestResult: (provider, result) =>
         set((state) => ({
           lastTestResults: {
@@ -75,19 +83,19 @@ export const useAIStore = create<AIState>()(
             },
           },
         })),
-      
+
       clearApiKey: (provider) =>
         set((state) => {
           const newApiKeys = { ...state.apiKeys };
           delete newApiKeys[provider];
           return { apiKeys: newApiKeys };
         }),
-      
+
       resetSettings: () => set(defaultSettings),
     }),
     {
-      name: 'omnidict-ai-settings',
+      name: "omnidict-ai-settings",
       version: 1,
-    }
-  )
+    },
+  ),
 );
