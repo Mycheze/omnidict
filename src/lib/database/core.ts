@@ -1,7 +1,22 @@
-import Database from 'better-sqlite3';
-import { createClient } from '@libsql/client';
-import path from 'path';
-import { promises as fs } from 'fs';
+import Database from "better-sqlite3";
+import { createClient } from "@libsql/client";
+import path from "path";
+import { promises as fs } from "fs";
+
+// Result type for COUNT(*) queries
+interface CountResult {
+  count: number;
+}
+
+// Result type for PRAGMA page_count
+interface PageCountResult {
+  page_count: number;
+}
+
+// Result type for PRAGMA page_size
+interface PageSizeResult {
+  page_size: number;
+}
 
 // Unified database interface that works with both SQLite and Turso
 interface DatabaseInterface {
@@ -14,7 +29,11 @@ interface DatabaseInterface {
 interface PreparedStatement {
   get(...params: any[]): Promise<any> | any;
   all(...params: any[]): Promise<any[]> | any[];
-  run(...params: any[]): Promise<{ changes: number; lastInsertRowid: number | bigint }> | { changes: number; lastInsertRowid: number | bigint };
+  run(
+    ...params: any[]
+  ):
+    | Promise<{ changes: number; lastInsertRowid: number | bigint }>
+    | { changes: number; lastInsertRowid: number | bigint };
 }
 
 // Wrapper for libSQL client to match better-sqlite3 interface
@@ -35,15 +54,15 @@ class LibSQLWrapper implements DatabaseInterface {
         const result = await this.client.execute({ sql, args: params });
         return {
           changes: result.rowsAffected,
-          lastInsertRowid: result.lastInsertRowid || 0
+          lastInsertRowid: result.lastInsertRowid || 0,
         };
-      }
+      },
     };
   }
 
   async exec(sql: string): Promise<void> {
     // Split multiple statements and execute them
-    const statements = sql.split(';').filter(s => s.trim());
+    const statements = sql.split(";").filter((s) => s.trim());
     for (const statement of statements) {
       if (statement.trim()) {
         await this.client.execute(statement.trim());
@@ -65,7 +84,7 @@ class SQLiteWrapper implements DatabaseInterface {
     return {
       get: (...params: any[]) => stmt.get(...params),
       all: (...params: any[]) => stmt.all(...params),
-      run: (...params: any[]) => stmt.run(...params)
+      run: (...params: any[]) => stmt.run(...params),
     };
   }
 
@@ -93,10 +112,8 @@ export class DatabaseCore {
   private useLocalDb = false;
 
   constructor() {
-    // NEW LOGIC: Use local DB only if explicitly requested
-    this.useLocalDb = process.env.USE_LOCAL_DB === 'true';
-    
-    console.log(`Database mode: ${this.useLocalDb ? 'Local SQLite' : 'Turso (default)'}`);
+    // Use local DB only if explicitly requested
+    this.useLocalDb = process.env.USE_LOCAL_DB === "true";
   }
 
   public static getInstance(): DatabaseCore {
@@ -122,7 +139,9 @@ export class DatabaseCore {
 
   public getDatabase(): DatabaseInterface {
     if (!this.db || !this.isInitialized) {
-      throw new Error('Database not initialized. Call ensureInitialized() first.');
+      throw new Error(
+        "Database not initialized. Call ensureInitialized() first.",
+      );
     }
     return this.db;
   }
@@ -130,29 +149,29 @@ export class DatabaseCore {
   private async initializeDatabase(): Promise<void> {
     try {
       if (this.useLocalDb) {
-        console.log('Initializing local SQLite database...');
         await this.initializeLocal();
       } else {
-        console.log('Initializing Turso database connection...');
         await this.initializeTurso();
       }
-      
+
       // Create tables and run migrations
       await this.createTables();
       await this.runMigrations();
-      
+
       // Only optimize for local development
       if (this.useLocalDb) {
         await this.optimizeDatabase();
       }
-      
     } catch (error) {
-      console.error('Failed to initialize database:', error);
+      console.error("Failed to initialize database:", error);
       if (this.db) {
         try {
           await this.db.close();
         } catch (closeError) {
-          console.error('Error closing database after init failure:', closeError);
+          console.error(
+            "Error closing database after init failure:",
+            closeError,
+          );
         }
         this.db = null;
       }
@@ -166,7 +185,9 @@ export class DatabaseCore {
     const authToken = process.env.TURSO_AUTH_TOKEN;
 
     if (!url) {
-      throw new Error('TURSO_DATABASE_URL environment variable is required for Turso connection');
+      throw new Error(
+        "TURSO_DATABASE_URL environment variable is required for Turso connection",
+      );
     }
 
     try {
@@ -176,19 +197,22 @@ export class DatabaseCore {
       });
 
       // Test the connection
-      await client.execute('SELECT 1');
-      
+      await client.execute("SELECT 1");
+
       this.db = new LibSQLWrapper(client);
-      console.log('Turso database connected successfully');
     } catch (error) {
-      console.error('Failed to connect to Turso:', error);
-      throw new Error(`Turso connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Failed to connect to Turso:", error);
+      throw new Error(
+        `Turso connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   }
 
   private async initializeLocal(): Promise<void> {
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'dictionary.db');
-    
+    const dbPath =
+      process.env.DATABASE_PATH ||
+      path.join(process.cwd(), "data", "dictionary.db");
+
     try {
       // Ensure directory exists
       const dbDir = path.dirname(dbPath);
@@ -196,47 +220,41 @@ export class DatabaseCore {
         await fs.access(dbDir);
       } catch {
         await fs.mkdir(dbDir, { recursive: true });
-        console.log('Created database directory:', dbDir);
       }
-      
+
       // Create database connection
       const sqlite = new Database(dbPath);
       this.db = new SQLiteWrapper(sqlite);
-      
+
       // Set performance pragmas for local development only
       this.setPragmas();
-      
-      console.log('Local SQLite database initialized at:', dbPath);
     } catch (error) {
-      console.error('Failed to initialize local SQLite:', error);
+      console.error("Failed to initialize local SQLite:", error);
       throw error;
     }
   }
 
   private setPragmas(): void {
     if (!this.db || !this.useLocalDb) return;
-    
+
     try {
-      // Only set pragmas for local SQLite
-      const sqliteWrapper = this.db as SQLiteWrapper;
-      if (sqliteWrapper.pragma) {
-        sqliteWrapper.pragma('journal_mode = WAL');
-        sqliteWrapper.pragma('synchronous = NORMAL');
-        sqliteWrapper.pragma('cache_size = -64000');
-        sqliteWrapper.pragma('temp_store = MEMORY');
-        sqliteWrapper.pragma('mmap_size = 268435456');
-        sqliteWrapper.pragma('foreign_keys = ON');
-        
-        console.log('Database pragmas set successfully');
+      // Only set pragmas for local SQLite — use the optional pragma method from DatabaseInterface
+      if (this.db.pragma) {
+        this.db.pragma("journal_mode = WAL");
+        this.db.pragma("synchronous = NORMAL");
+        this.db.pragma("cache_size = -64000");
+        this.db.pragma("temp_store = MEMORY");
+        this.db.pragma("mmap_size = 268435456");
+        this.db.pragma("foreign_keys = ON");
       }
     } catch (error) {
-      console.warn('Failed to set some pragmas:', error);
+      console.warn("Failed to set some pragmas:", error);
     }
   }
 
   private async createTables(): Promise<void> {
-    if (!this.db) throw new Error('Database not available');
-    
+    if (!this.db) throw new Error("Database not available");
+
     const queries = [
       `CREATE TABLE IF NOT EXISTS entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -251,7 +269,7 @@ export class DatabaseCore {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(headword, source_language, target_language, COALESCE(context_sentence, ''))
       )`,
-      
+
       `CREATE TABLE IF NOT EXISTS meanings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entry_id INTEGER NOT NULL,
@@ -263,7 +281,7 @@ export class DatabaseCore {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(entry_id) REFERENCES entries(id) ON DELETE CASCADE
       )`,
-      
+
       `CREATE TABLE IF NOT EXISTS examples (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         meaning_id INTEGER NOT NULL,
@@ -274,7 +292,7 @@ export class DatabaseCore {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(meaning_id) REFERENCES meanings(id) ON DELETE CASCADE
       )`,
-      
+
       `CREATE TABLE IF NOT EXISTS lemma_cache (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         word TEXT NOT NULL,
@@ -290,25 +308,21 @@ export class DatabaseCore {
       try {
         await this.db.exec(query);
       } catch (error) {
-        console.error('Error creating table:', error);
+        console.error("Error creating table:", error);
         throw error;
       }
     }
-    
-    console.log('Database tables created successfully');
   }
 
   private async runMigrations(): Promise<void> {
-    if (!this.db) throw new Error('Database not available');
-    
+    if (!this.db) throw new Error("Database not available");
+
     try {
-      console.log('Running database migrations...');
-      
       // Migration 1: Add order_index to meanings table (safe)
-      if (!(await this.columnExists('meanings', 'order_index'))) {
-        await this.db.exec('ALTER TABLE meanings ADD COLUMN order_index INTEGER DEFAULT 0');
-        console.log('✓ Added order_index column to meanings table');
-        
+      if (!(await this.columnExists("meanings", "order_index"))) {
+        await this.db.exec(
+          "ALTER TABLE meanings ADD COLUMN order_index INTEGER DEFAULT 0",
+        );
         // Update existing data
         await this.db.exec(`
           UPDATE meanings 
@@ -322,10 +336,10 @@ export class DatabaseCore {
       }
 
       // Migration 2: Add order_index to examples table (safe)
-      if (!(await this.columnExists('examples', 'order_index'))) {
-        await this.db.exec('ALTER TABLE examples ADD COLUMN order_index INTEGER DEFAULT 0');
-        console.log('✓ Added order_index column to examples table');
-        
+      if (!(await this.columnExists("examples", "order_index"))) {
+        await this.db.exec(
+          "ALTER TABLE examples ADD COLUMN order_index INTEGER DEFAULT 0",
+        );
         // Update existing data
         await this.db.exec(`
           UPDATE examples 
@@ -339,88 +353,104 @@ export class DatabaseCore {
       }
 
       // Migration 3: Add expires_at to lemma_cache table (FIXED for Turso compatibility)
-      if (!(await this.columnExists('lemma_cache', 'expires_at'))) {
+      if (!(await this.columnExists("lemma_cache", "expires_at"))) {
         // Use NULL default instead of datetime function - Turso compatible
-        await this.db.exec('ALTER TABLE lemma_cache ADD COLUMN expires_at TIMESTAMP');
-        console.log('✓ Added expires_at column to lemma_cache table');
-        
+        await this.db.exec(
+          "ALTER TABLE lemma_cache ADD COLUMN expires_at TIMESTAMP",
+        );
         // Update existing cache entries to expire in 24 hours using separate statement
         await this.db.exec(`
           UPDATE lemma_cache 
           SET expires_at = datetime('now', '+24 hours')
           WHERE expires_at IS NULL
         `);
-        console.log('✓ Updated existing lemma cache entries with expiration dates');
       }
-
-      console.log('Database migrations completed successfully');
     } catch (error) {
-      console.error('Error running migrations:', error);
+      console.error("Error running migrations:", error);
       // Don't throw - allow app to continue with existing schema
     }
   }
 
-  private async columnExists(tableName: string, columnName: string): Promise<boolean> {
+  private static readonly VALID_TABLE_NAMES = [
+    "entries",
+    "meanings",
+    "examples",
+    "lemma_cache",
+  ] as const;
+
+  private async columnExists(
+    tableName: string,
+    columnName: string,
+  ): Promise<boolean> {
     if (!this.db) return false;
-    
+
+    if (
+      !(DatabaseCore.VALID_TABLE_NAMES as readonly string[]).includes(tableName)
+    ) {
+      throw new Error(
+        `Invalid table name: ${tableName}. Allowed tables: ${DatabaseCore.VALID_TABLE_NAMES.join(", ")}`,
+      );
+    }
+
     try {
       const stmt = this.db.prepare(`PRAGMA table_info(${tableName})`);
-      const result = await stmt.all() as Array<{name: string}>;
-      return result.some(col => col.name === columnName);
+      const result = (await stmt.all()) as Array<{ name: string }>;
+      return result.some((col) => col.name === columnName);
     } catch (error) {
-      console.warn(`Error checking column ${columnName} in ${tableName}:`, error);
+      console.warn(
+        `Error checking column ${columnName} in ${tableName}:`,
+        error,
+      );
       return false;
     }
   }
 
   private async optimizeDatabase(): Promise<void> {
     if (!this.db || !this.useLocalDb) return;
-    
+
     try {
-      console.log('Optimizing database with composite indexes...');
-      
       const indexes = [
         `CREATE INDEX IF NOT EXISTS idx_entries_lookup 
          ON entries(headword COLLATE NOCASE, source_language, target_language)`,
-        
+
         `CREATE INDEX IF NOT EXISTS idx_entries_languages 
          ON entries(source_language, target_language, created_at DESC)`,
-        
+
         `CREATE INDEX IF NOT EXISTS idx_entries_search 
          ON entries(source_language, target_language, headword COLLATE NOCASE)`,
-        
+
         `CREATE INDEX IF NOT EXISTS idx_entries_context 
          ON entries(has_context, source_language, target_language) WHERE has_context = TRUE`,
-        
+
         `CREATE INDEX IF NOT EXISTS idx_entries_recent 
          ON entries(source_language, target_language, created_at DESC)`,
       ];
 
       // Add order-dependent indexes only if columns exist
-      if (await this.columnExists('meanings', 'order_index')) {
+      if (await this.columnExists("meanings", "order_index")) {
         indexes.push(
           `CREATE INDEX IF NOT EXISTS idx_meanings_entry 
-           ON meanings(entry_id, order_index)`
+           ON meanings(entry_id, order_index)`,
         );
       }
-      
-      if (await this.columnExists('examples', 'order_index')) {
+
+      if (await this.columnExists("examples", "order_index")) {
         indexes.push(
           `CREATE INDEX IF NOT EXISTS idx_examples_meaning 
-           ON examples(meaning_id, order_index)`
+           ON examples(meaning_id, order_index)`,
         );
       }
-      
+
       // Cache indexes
-      if (await this.columnExists('lemma_cache', 'expires_at')) {
+      if (await this.columnExists("lemma_cache", "expires_at")) {
         indexes.push(
           `CREATE INDEX IF NOT EXISTS idx_lemma_lookup 
-           ON lemma_cache(word, target_language, expires_at)`
+           ON lemma_cache(word, target_language, expires_at)`,
         );
       } else {
         indexes.push(
           `CREATE INDEX IF NOT EXISTS idx_lemma_lookup_basic 
-           ON lemma_cache(word, target_language)`
+           ON lemma_cache(word, target_language)`,
         );
       }
 
@@ -429,23 +459,20 @@ export class DatabaseCore {
         try {
           await this.db.exec(indexQuery);
         } catch (error) {
-          console.warn('Index creation warning (continuing):', error);
+          console.warn("Index creation warning (continuing):", error);
         }
       }
-      
+
       // Update query planner statistics
-      await this.db.exec('ANALYZE');
-      
-      console.log('Database optimization completed successfully');
-      
+      await this.db.exec("ANALYZE");
     } catch (error) {
-      console.warn('Database optimization completed with warnings:', error);
+      console.warn("Database optimization completed with warnings:", error);
     }
   }
 
   public prepareStatements() {
     const db = this.getDatabase();
-    
+
     // For async compatibility, we'll prepare these on-demand
     return {
       getEntryByHeadword: db.prepare(`
@@ -520,29 +547,23 @@ export class DatabaseCore {
 
   public async runMaintenance(): Promise<void> {
     if (!this.db) return;
-    
+
     try {
-      console.log('Running database maintenance...');
-      
       // Clean up expired lemma cache entries
-      if (await this.columnExists('lemma_cache', 'expires_at')) {
+      if (await this.columnExists("lemma_cache", "expires_at")) {
         const stmt = this.db.prepare(`
           DELETE FROM lemma_cache 
           WHERE expires_at IS NOT NULL AND expires_at < datetime('now')
         `);
         const result = await stmt.run();
-        
-        if (result.changes > 0) {
-          console.log(`Cleaned up ${result.changes} expired cache entries`);
-        }
+
+        // result.changes contains the number of cleaned up entries
       }
-      
+
       // Update query planner statistics
-      await this.db.exec('ANALYZE');
-      
-      console.log('Database maintenance completed successfully');
+      await this.db.exec("ANALYZE");
     } catch (error) {
-      console.error('Error during database maintenance:', error);
+      console.error("Error during database maintenance:", error);
     }
   }
 
@@ -552,60 +573,77 @@ export class DatabaseCore {
         entryCount: 0,
         meaningCount: 0,
         exampleCount: 0,
-        dbSize: '0 MB',
+        dbSize: "0 MB",
         cacheSize: 0,
       };
     }
-    
+
     try {
-      const entryStmt = this.db.prepare('SELECT COUNT(*) as count FROM entries');
-      const meaningStmt = this.db.prepare('SELECT COUNT(*) as count FROM meanings');
-      const exampleStmt = this.db.prepare('SELECT COUNT(*) as count FROM examples');
-      const cacheStmt = this.db.prepare('SELECT COUNT(*) as count FROM lemma_cache');
-      
-      const [entryCount, meaningCount, exampleCount, cacheCount] = await Promise.all([
-        entryStmt.get(),
-        meaningStmt.get(),
-        exampleStmt.get(),
-        cacheStmt.get()
-      ]);
-      
+      const entryStmt = this.db.prepare(
+        "SELECT COUNT(*) as count FROM entries",
+      );
+      const meaningStmt = this.db.prepare(
+        "SELECT COUNT(*) as count FROM meanings",
+      );
+      const exampleStmt = this.db.prepare(
+        "SELECT COUNT(*) as count FROM examples",
+      );
+      const cacheStmt = this.db.prepare(
+        "SELECT COUNT(*) as count FROM lemma_cache",
+      );
+
+      const [entryCount, meaningCount, exampleCount, cacheCount] =
+        await Promise.all([
+          entryStmt.get(),
+          meaningStmt.get(),
+          exampleStmt.get(),
+          cacheStmt.get(),
+        ]);
+
       // Database size is only available for local SQLite
-      let sizeMB = '0';
+      let sizeMB = "0";
       if (this.useLocalDb) {
         try {
-          const pageCountStmt = this.db.prepare('PRAGMA page_count');
-          const pageSizeStmt = this.db.prepare('PRAGMA page_size');
+          const pageCountStmt = this.db.prepare("PRAGMA page_count");
+          const pageSizeStmt = this.db.prepare("PRAGMA page_size");
           const [pageCount, pageSize] = await Promise.all([
             pageCountStmt.get(),
-            pageSizeStmt.get()
+            pageSizeStmt.get(),
           ]);
-          
-          if (pageCount && pageSize) {
-            const sizeBytes = (pageCount as any).page_count * (pageSize as any).page_size;
+
+          const typedPageCount = pageCount as PageCountResult | undefined;
+          const typedPageSize = pageSize as PageSizeResult | undefined;
+          if (typedPageCount && typedPageSize) {
+            const sizeBytes =
+              typedPageCount.page_count * typedPageSize.page_size;
             sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
           }
         } catch (error) {
-          console.warn('Could not get database size:', error);
+          console.warn("Could not get database size:", error);
         }
       } else {
-        sizeMB = 'N/A (remote)';
+        sizeMB = "N/A (remote)";
       }
-      
+
+      const typedEntryCount = entryCount as CountResult | undefined;
+      const typedMeaningCount = meaningCount as CountResult | undefined;
+      const typedExampleCount = exampleCount as CountResult | undefined;
+      const typedCacheCount = cacheCount as CountResult | undefined;
+
       return {
-        entryCount: (entryCount as any).count,
-        meaningCount: (meaningCount as any).count,
-        exampleCount: (exampleCount as any).count,
+        entryCount: typedEntryCount?.count ?? 0,
+        meaningCount: typedMeaningCount?.count ?? 0,
+        exampleCount: typedExampleCount?.count ?? 0,
         dbSize: `${sizeMB} MB`,
-        cacheSize: (cacheCount as any).count,
+        cacheSize: typedCacheCount?.count ?? 0,
       };
     } catch (error) {
-      console.error('Error getting database stats:', error);
+      console.error("Error getting database stats:", error);
       return {
         entryCount: 0,
         meaningCount: 0,
         exampleCount: 0,
-        dbSize: '0 MB',
+        dbSize: "0 MB",
         cacheSize: 0,
       };
     }
@@ -615,9 +653,8 @@ export class DatabaseCore {
     if (this.db) {
       try {
         await this.db.close();
-        console.log('Database connection closed');
       } catch (error) {
-        console.error('Error closing database:', error);
+        console.error("Error closing database:", error);
       } finally {
         this.db = null;
         this.isInitialized = false;
