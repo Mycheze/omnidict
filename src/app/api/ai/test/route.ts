@@ -1,29 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createProvider, AIProviderType } from "@/lib/ai/providers";
+import { createProvider } from "@/lib/ai/providers";
+import { isValidProviderType } from "@/lib/ai/providers/metadata";
 import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
-
-const VALID_PROVIDERS: AIProviderType[] = [
-  "deepseek",
-  "chatgpt",
-  "claude",
-  "gemini",
-];
 
 async function testProviderHandler(request: NextRequest) {
   const body = await request.json();
   const { providerType, apiKey, model } = body;
 
-  if (
-    !providerType ||
-    !VALID_PROVIDERS.includes(providerType as AIProviderType)
-  ) {
+  if (!providerType || !isValidProviderType(providerType)) {
     return NextResponse.json(
       { success: false, error: "Invalid or missing provider type" },
       { status: 400 },
     );
   }
 
-  const validatedProvider = providerType as AIProviderType;
+  const validatedProvider = providerType;
 
   // For DeepSeek, we don't need an API key from the request
   const config =

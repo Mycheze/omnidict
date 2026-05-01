@@ -313,6 +313,34 @@ export class EntryRepository {
   }
 
   /**
+   * Atomically replace an entry's content (lookup by headword, update in-place)
+   */
+  public async replaceEntry(
+    headword: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+    newEntry: DictionaryEntry,
+  ): Promise<boolean> {
+    try {
+      const statements = this.getStatements();
+      const result = (await statements.getEntryByHeadword.get(
+        headword,
+        sourceLanguage,
+        targetLanguage,
+      )) as { id: number } | undefined;
+
+      if (!result) {
+        return false;
+      }
+
+      return await this.updateEntry(result.id, newEntry);
+    } catch (error) {
+      console.error("Error replacing entry:", error);
+      return false;
+    }
+  }
+
+  /**
    * Delete an entry efficiently
    */
   public async deleteEntry(

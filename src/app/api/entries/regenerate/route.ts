@@ -57,9 +57,19 @@ async function regenerateEntryHandler(request: NextRequest) {
 
     console.log("Entry regenerated successfully:", result.entry?.headword);
 
+    if (!result.entry) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Entry was regenerated but could not be retrieved",
+        },
+        { status: 500 },
+      );
+    }
+
     const response: ApiResponse<DictionaryEntry> = {
       success: true,
-      data: result.entry!,
+      data: result.entry,
       message: "Entry regenerated successfully",
     };
 

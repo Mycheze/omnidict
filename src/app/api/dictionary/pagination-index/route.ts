@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withSecurity, RELAXED_SECURITY } from "@/lib/security/middleware";
-import { sanitizeError } from "@/lib/security/validation";
+import { LanguageSchema, sanitizeError } from "@/lib/security/validation";
 import DatabaseManager from "@/lib/database";
+import { z } from "zod";
+
+const PaginationIndexSchema = z.object({
+  sourceLanguage: LanguageSchema.optional(),
+  targetLanguage: LanguageSchema.optional(),
+  searchTerm: z.string().max(200).optional(),
+  partOfSpeech: z.string().max(50).optional(),
+});
 
 async function paginationIndexHandler(req: NextRequest) {
   try {
-    const filters = await req.json();
+    const rawBody = await req.json();
+    const filters = PaginationIndexSchema.parse(rawBody);
     const db = DatabaseManager.getInstance();
 
     // Default to a page size of 50, same as the main list

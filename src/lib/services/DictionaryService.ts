@@ -265,22 +265,14 @@ export class DictionaryService {
         };
       }
 
-      // Only delete the old entry after successful AI generation
-      const deleted = await this.db.deleteEntry(
+      // Atomically replace the old entry with the new one (transactional update)
+      const replaced = await this.db.replaceEntry(
         headword,
         sourceLanguage,
         targetLanguage,
+        newEntry,
       );
-      if (!deleted) {
-        return {
-          success: false,
-          error: "Failed to delete existing entry",
-        };
-      }
-
-      // Save the new entry
-      const entryId = await this.db.addEntry(newEntry);
-      if (!entryId) {
+      if (!replaced) {
         return {
           success: false,
           error: "Failed to save regenerated entry",

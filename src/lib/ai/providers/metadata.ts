@@ -5,6 +5,17 @@
 
 export type AIProviderType = "deepseek" | "chatgpt" | "claude" | "gemini";
 
+const VALID_PROVIDER_TYPES: readonly AIProviderType[] = [
+  "deepseek",
+  "chatgpt",
+  "claude",
+  "gemini",
+];
+
+export function isValidProviderType(value: string): value is AIProviderType {
+  return VALID_PROVIDER_TYPES.includes(value as AIProviderType);
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

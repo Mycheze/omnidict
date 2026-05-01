@@ -11,6 +11,7 @@ vi.mock("@/lib/database", () => {
     getEntryByHeadword: vi.fn(),
     addEntry: vi.fn(),
     deleteEntry: vi.fn(),
+    replaceEntry: vi.fn(),
     searchEntries: vi.fn(),
     getSearchSuggestions: vi.fn(),
     getEntriesForLanguages: vi.fn(),
@@ -241,25 +242,24 @@ describe("DictionaryService", () => {
   });
 
   describe("regenerateEntry", () => {
-    it("follows delete → regenerate → save flow", async () => {
+    it("follows generate → replace flow", async () => {
       const existingEntry = makeSampleEntry();
       const newEntry = makeSampleEntry({ part_of_speech: "verb" });
 
       mockDb.getEntryByHeadword.mockResolvedValue(existingEntry);
-      mockDb.deleteEntry.mockResolvedValue(true);
       mockAi.regenerateEntry.mockResolvedValue(newEntry);
-      mockDb.addEntry.mockResolvedValue(2);
+      mockDb.replaceEntry.mockResolvedValue(true);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(true);
       expect(result.entry!.part_of_speech).toBe("verb");
-      expect(mockDb.deleteEntry).toHaveBeenCalledWith(
+      expect(mockDb.replaceEntry).toHaveBeenCalledWith(
         "hello",
         "English",
         "Czech",
+        newEntry,
       );
-      expect(mockDb.addEntry).toHaveBeenCalledWith(newEntry);
     });
 
     it("returns error if entry does not exist", async () => {
@@ -271,14 +271,15 @@ describe("DictionaryService", () => {
       expect(result.error).toContain("not found");
     });
 
-    it("returns error if delete fails", async () => {
+    it("returns error if replace fails", async () => {
       mockDb.getEntryByHeadword.mockResolvedValue(makeSampleEntry());
-      mockDb.deleteEntry.mockResolvedValue(false);
+      mockAi.regenerateEntry.mockResolvedValue(makeSampleEntry());
+      mockDb.replaceEntry.mockResolvedValue(false);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Failed to delete");
+      expect(result.error).toContain("Failed to save");
     });
 
     it("returns error if AI regeneration fails", async () => {
@@ -292,16 +293,14 @@ describe("DictionaryService", () => {
       expect(result.error).toContain("Failed to regenerate");
     });
 
-    it("returns error if saving regenerated entry fails", async () => {
+    it("returns error if AI regeneration returns null", async () => {
       mockDb.getEntryByHeadword.mockResolvedValue(makeSampleEntry());
-      mockDb.deleteEntry.mockResolvedValue(true);
-      mockAi.regenerateEntry.mockResolvedValue(makeSampleEntry());
-      mockDb.addEntry.mockResolvedValue(null);
+      mockAi.regenerateEntry.mockResolvedValue(null);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Failed to save");
+      expect(result.error).toContain("Failed to regenerate");
     });
   });
 

@@ -50,10 +50,20 @@ async function createEntryHandler(request: NextRequest) {
       result.entry?.metadata.has_context ? "(context-aware)" : "(standard)",
     );
 
+    if (!result.entry) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Entry was created but could not be retrieved",
+        },
+        { status: 500 },
+      );
+    }
+
     const response: ApiResponse<DictionaryEntry> = {
       success: true,
-      data: result.entry!,
-      message: result.entry?.metadata.has_context
+      data: result.entry,
+      message: result.entry.metadata.has_context
         ? "Context-aware entry created successfully"
         : "Entry created successfully",
     };

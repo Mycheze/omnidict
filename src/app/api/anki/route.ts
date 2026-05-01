@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, RELAXED_SECURITY } from "@/lib/security/middleware";
 
-export async function POST(request: NextRequest) {
+async function ankiProxyHandler(request: NextRequest) {
   try {
     // Check if we're in production/hosted environment
     const isProduction =
@@ -69,3 +70,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withSecurity(ankiProxyHandler, RELAXED_SECURITY);

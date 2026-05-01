@@ -443,7 +443,6 @@ export function useDictionary() {
             setEntries([...currentStoreEntries, ...newEntries]);
           }
           // Always update total even on append, in case it changed
-          // Always update total even on append, in case it changed
           setTotalEntries(result.data.total);
         }
 

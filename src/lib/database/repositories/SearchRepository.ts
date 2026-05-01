@@ -140,19 +140,46 @@ export class SearchRepository {
     offset: number,
   ): Promise<DictionaryEntry[]> {
     try {
-      const statements = this.getStatements();
-      const rows = (await statements.searchEntries.all(
-        searchTerm, // For exact match ranking
-        searchTerm, // For prefix match ranking
-        sourceLanguage, // Source language filter
-        targetLanguage, // Target language filter
-        searchTerm, // For prefix search
-        searchTerm, // For contains search
-        limit, // LIMIT
-        offset, // OFFSET
-      )) as Array<{ id: number; headword: string; rank_score: number }>;
+      const db = this.core.getDatabase();
+      const params: SqlParam[] = [searchTerm, searchTerm];
+      let languageFilter = "";
 
-      // Get full entry data for each result efficiently
+      if (sourceLanguage) {
+        languageFilter += " AND e.source_language = ?";
+        params.push(sourceLanguage);
+      }
+      if (targetLanguage) {
+        languageFilter += " AND e.target_language = ?";
+        params.push(targetLanguage);
+      }
+
+      params.push(searchTerm, searchTerm, limit, offset);
+
+      const query = `
+        SELECT
+          e.id, e.headword,
+          CASE
+            WHEN e.headword = ? COLLATE NOCASE THEN 1
+            WHEN e.headword LIKE ? || '%' COLLATE NOCASE THEN 2
+            ELSE 3
+          END as rank_score
+        FROM entries e
+        WHERE 1=1${languageFilter}
+          AND (
+            e.headword LIKE ? || '%' COLLATE NOCASE OR
+            e.headword LIKE '%' || ? || '%' COLLATE NOCASE
+          )
+        ORDER BY rank_score, e.headword COLLATE NOCASE
+        LIMIT ? OFFSET ?
+      `;
+
+      const stmt = db.prepare(query);
+      const rows = (await stmt.all(...params)) as Array<{
+        id: number;
+        headword: string;
+        rank_score: number;
+      }>;
+
       const ids = rows.map((r) => r.id);
       return this.entryRepo.getEntriesByIds(ids);
     } catch (error) {
