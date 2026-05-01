@@ -55,3 +55,15 @@ project_tree.txt
 
 # Additional logs
 *.log
+
+# AI workflow system
+ai-workflow/
+.ai/
+
+# Temporary/reference docs
+CLAUDEnew.md
+CLAUDEold.md
+sso-integration-guide.md
+PROJECT-KNOWLEDGE-README.md
+ui_layout_format.md
+.claude/
