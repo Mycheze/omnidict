@@ -1,6 +1,24 @@
-import DatabaseManager from '@/lib/database';
-import AIManager from '@/lib/ai';
-import { DictionaryEntry, SearchFilters, SearchResult, LemmaRequest, LemmaResponse } from '@/lib/types';
+import DatabaseManager from "@/lib/database";
+import AIManager, { AIManagerConfig } from "@/lib/ai";
+import { AIProviderType } from "@/lib/ai/providers/metadata";
+import {
+  DictionaryEntry,
+  SearchFilters,
+  SearchResult,
+  LemmaRequest,
+  LemmaResponse,
+} from "@/lib/types";
+
+const VALID_PROVIDER_TYPES: readonly string[] = [
+  "deepseek",
+  "chatgpt",
+  "claude",
+  "gemini",
+] as const;
+
+function isValidProviderType(value: string): value is AIProviderType {
+  return VALID_PROVIDER_TYPES.includes(value);
+}
 
 /**
  * Dictionary Service Layer
@@ -18,17 +36,29 @@ export class DictionaryService {
   }
 
   /**
-   * Configure AIManager with user's AI provider settings
-   * This should be called before generating entries with specific provider settings
+   * Get an AIManager instance for the given provider config.
+   * Creates a new instance per call to avoid race conditions on the singleton.
+   * Falls back to the default singleton when no config is provided.
    */
-  public configureAI(providerType: string, apiKey?: string, model?: string) {
-    AIManager.configure({
-      providerType: providerType as any,
-      apiKey,
-      model,
-    });
-    // Reinitialize AI manager with new configuration
-    this.ai = AIManager.getInstance();
+  private getAIForConfig(providerConfig?: {
+    providerType?: string;
+    apiKey?: string;
+    model?: string;
+  }): AIManager {
+    if (providerConfig?.providerType) {
+      if (!isValidProviderType(providerConfig.providerType)) {
+        throw new Error(
+          `Invalid AI provider type: ${providerConfig.providerType}`,
+        );
+      }
+      const config: AIManagerConfig = {
+        providerType: providerConfig.providerType,
+        apiKey: providerConfig.apiKey,
+        model: providerConfig.model,
+      };
+      return AIManager.createProviderInstance(config);
+    }
+    return this.ai;
   }
 
   /**
@@ -44,42 +74,58 @@ export class DictionaryService {
   // ===== ENTRY OPERATIONS =====
 
   /**
-   * Create a new dictionary entry
+   * Create a new dictionary entry.
+   * Accepts optional provider config to avoid mutating the singleton.
    */
   public async createEntry(
     word: string,
     sourceLanguage: string,
     targetLanguage: string,
-    contextSentence?: string
+    contextSentence?: string,
+    providerConfig?: { providerType?: string; apiKey?: string; model?: string },
   ): Promise<{ success: boolean; entry?: DictionaryEntry; error?: string }> {
     try {
-      console.log('Creating entry for:', word, `(${sourceLanguage} → ${targetLanguage})`);
+      console.log(
+        "Creating entry for:",
+        word,
+        `(${sourceLanguage} → ${targetLanguage})`,
+      );
+
+      const ai = this.getAIForConfig(providerConfig);
 
       // First, get the lemma form of the word
       let lemma: string;
       if (contextSentence && contextSentence.trim()) {
-        const { lemma: contextualLemma } = await this.ai.getLemmaWithContext({
+        const { lemma: contextualLemma } = await ai.getLemmaWithContext({
           word,
           contextSentence: contextSentence.trim(),
-          targetLanguage
+          targetLanguage,
         });
         lemma = contextualLemma;
       } else {
-        const { lemma: standardLemma } = await this.ai.getLemma({ 
-          word, 
-          targetLanguage 
+        const { lemma: standardLemma } = await ai.getLemma({
+          word,
+          targetLanguage,
         });
         lemma = standardLemma;
       }
 
       // Check if entry already exists (check both original word and lemma)
-      let existingEntry = await this.db.getEntryByHeadword(word, sourceLanguage, targetLanguage);
+      let existingEntry = await this.db.getEntryByHeadword(
+        word,
+        sourceLanguage,
+        targetLanguage,
+      );
       if (!existingEntry && lemma !== word) {
-        existingEntry = await this.db.getEntryByHeadword(lemma, sourceLanguage, targetLanguage);
+        existingEntry = await this.db.getEntryByHeadword(
+          lemma,
+          sourceLanguage,
+          targetLanguage,
+        );
       }
 
       if (existingEntry) {
-        console.log('Entry already exists for:', lemma);
+        console.log("Entry already exists for:", lemma);
         return {
           success: true,
           entry: existingEntry,
@@ -89,14 +135,14 @@ export class DictionaryService {
       // Generate entry using AI
       let entry: DictionaryEntry | null;
       if (contextSentence && contextSentence.trim()) {
-        entry = await this.ai.generateContextualEntry({
+        entry = await ai.generateContextualEntry({
           word,
           sourceLanguage,
           targetLanguage,
           contextSentence: contextSentence.trim(),
         });
       } else {
-        entry = await this.ai.generateEntry({
+        entry = await ai.generateEntry({
           word: lemma,
           sourceLanguage,
           targetLanguage,
@@ -106,7 +152,7 @@ export class DictionaryService {
       if (!entry) {
         return {
           success: false,
-          error: 'Failed to generate entry using AI',
+          error: "Failed to generate entry using AI",
         };
       }
 
@@ -115,22 +161,25 @@ export class DictionaryService {
       if (!entryId) {
         return {
           success: false,
-          error: 'Failed to save entry to database',
+          error: "Failed to save entry to database",
         };
       }
 
-      console.log('Entry created successfully:', entry.headword, 
-                  entry.metadata.has_context ? '(context-aware)' : '(standard)');
+      console.log(
+        "Entry created successfully:",
+        entry.headword,
+        entry.metadata.has_context ? "(context-aware)" : "(standard)",
+      );
 
       return {
         success: true,
         entry,
       };
     } catch (error) {
-      console.error('Error in createEntry:', error);
+      console.error("Error in createEntry:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -141,15 +190,19 @@ export class DictionaryService {
   public async getEntry(
     headword: string,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
   ): Promise<{ success: boolean; entry?: DictionaryEntry; error?: string }> {
     try {
-      const entry = await this.db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
-      
+      const entry = await this.db.getEntryByHeadword(
+        headword,
+        sourceLanguage,
+        targetLanguage,
+      );
+
       if (!entry) {
         return {
           success: false,
-          error: 'Entry not found',
+          error: "Entry not found",
         };
       }
 
@@ -158,45 +211,48 @@ export class DictionaryService {
         entry,
       };
     } catch (error) {
-      console.error('Error in getEntry:', error);
+      console.error("Error in getEntry:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
 
   /**
-   * Regenerate an existing entry with variation
+   * Regenerate an existing entry with variation.
+   * Generates the new entry BEFORE deleting the old one to prevent data loss.
+   * Accepts optional provider config to avoid mutating the singleton.
    */
   public async regenerateEntry(
     headword: string,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
+    providerConfig?: { providerType?: string; apiKey?: string; model?: string },
   ): Promise<{ success: boolean; entry?: DictionaryEntry; error?: string }> {
     try {
-      console.log('Regenerating entry for:', headword, `(${sourceLanguage} → ${targetLanguage})`);
+      console.log(
+        "Regenerating entry for:",
+        headword,
+        `(${sourceLanguage} → ${targetLanguage})`,
+      );
 
       // Check if entry exists
-      const existingEntry = await this.db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
+      const existingEntry = await this.db.getEntryByHeadword(
+        headword,
+        sourceLanguage,
+        targetLanguage,
+      );
       if (!existingEntry) {
         return {
           success: false,
-          error: 'Entry not found',
+          error: "Entry not found",
         };
       }
 
-      // Delete the existing entry
-      const deleted = await this.db.deleteEntry(headword, sourceLanguage, targetLanguage);
-      if (!deleted) {
-        return {
-          success: false,
-          error: 'Failed to delete existing entry',
-        };
-      }
-
-      // Generate new entry with variation
-      const newEntry = await this.ai.regenerateEntry({
+      // Generate new entry BEFORE deleting the old one to prevent data loss
+      const ai = this.getAIForConfig(providerConfig);
+      const newEntry = await ai.regenerateEntry({
         word: headword,
         sourceLanguage,
         targetLanguage,
@@ -205,7 +261,20 @@ export class DictionaryService {
       if (!newEntry) {
         return {
           success: false,
-          error: 'Failed to regenerate entry using AI',
+          error: "Failed to regenerate entry using AI",
+        };
+      }
+
+      // Only delete the old entry after successful AI generation
+      const deleted = await this.db.deleteEntry(
+        headword,
+        sourceLanguage,
+        targetLanguage,
+      );
+      if (!deleted) {
+        return {
+          success: false,
+          error: "Failed to delete existing entry",
         };
       }
 
@@ -214,21 +283,21 @@ export class DictionaryService {
       if (!entryId) {
         return {
           success: false,
-          error: 'Failed to save regenerated entry',
+          error: "Failed to save regenerated entry",
         };
       }
 
-      console.log('Entry regenerated successfully:', newEntry.headword);
+      console.log("Entry regenerated successfully:", newEntry.headword);
 
       return {
         success: true,
         entry: newEntry,
       };
     } catch (error) {
-      console.error('Error in regenerateEntry:', error);
+      console.error("Error in regenerateEntry:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -239,15 +308,19 @@ export class DictionaryService {
   public async deleteEntry(
     headword: string,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const deleted = await this.db.deleteEntry(headword, sourceLanguage, targetLanguage);
-      
+      const deleted = await this.db.deleteEntry(
+        headword,
+        sourceLanguage,
+        targetLanguage,
+      );
+
       if (!deleted) {
         return {
           success: false,
-          error: 'Entry not found or failed to delete',
+          error: "Entry not found or failed to delete",
         };
       }
 
@@ -255,10 +328,10 @@ export class DictionaryService {
         success: true,
       };
     } catch (error) {
-      console.error('Error in deleteEntry:', error);
+      console.error("Error in deleteEntry:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -271,20 +344,20 @@ export class DictionaryService {
   public async searchEntries(
     filters: SearchFilters,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<{ success: boolean; result?: SearchResult; error?: string }> {
     try {
       const result = await this.db.searchEntries(filters, page, pageSize);
-      
+
       return {
         success: true,
         result,
       };
     } catch (error) {
-      console.error('Error in searchEntries:', error);
+      console.error("Error in searchEntries:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -296,20 +369,29 @@ export class DictionaryService {
     sourceLanguage: string,
     targetLanguage: string,
     page = 1,
-    pageSize = 200
-  ): Promise<{ success: boolean; result?: { entries: DictionaryEntry[]; total: number }; error?: string }> {
+    pageSize = 200,
+  ): Promise<{
+    success: boolean;
+    result?: { entries: DictionaryEntry[]; total: number };
+    error?: string;
+  }> {
     try {
-      const result = await this.db.getEntriesForLanguages(sourceLanguage, targetLanguage, page, pageSize);
-      
+      const result = await this.db.getEntriesForLanguages(
+        sourceLanguage,
+        targetLanguage,
+        page,
+        pageSize,
+      );
+
       return {
         success: true,
         result,
       };
     } catch (error) {
-      console.error('Error in getEntriesForLanguages:', error);
+      console.error("Error in getEntriesForLanguages:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -321,25 +403,25 @@ export class DictionaryService {
     partialTerm: string,
     sourceLanguage?: string,
     targetLanguage?: string,
-    limit = 10
+    limit = 10,
   ): Promise<{ success: boolean; suggestions?: string[]; error?: string }> {
     try {
       const suggestions = await this.db.getSearchSuggestions(
-        partialTerm, 
-        sourceLanguage, 
-        targetLanguage, 
-        limit
+        partialTerm,
+        sourceLanguage,
+        targetLanguage,
+        limit,
       );
-      
+
       return {
         success: true,
         suggestions,
       };
     } catch (error) {
-      console.error('Error in getSearchSuggestions:', error);
+      console.error("Error in getSearchSuggestions:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -351,25 +433,29 @@ export class DictionaryService {
     headword: string,
     sourceLanguage?: string,
     targetLanguage?: string,
-    limit = 5
-  ): Promise<{ success: boolean; entries?: DictionaryEntry[]; error?: string }> {
+    limit = 5,
+  ): Promise<{
+    success: boolean;
+    entries?: DictionaryEntry[];
+    error?: string;
+  }> {
     try {
       const entries = await this.db.getSimilarEntries(
-        headword, 
-        sourceLanguage, 
-        targetLanguage, 
-        limit
+        headword,
+        sourceLanguage,
+        targetLanguage,
+        limit,
       );
-      
+
       return {
         success: true,
         entries,
       };
     } catch (error) {
-      console.error('Error in getSimilarEntries:', error);
+      console.error("Error in getSimilarEntries:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -379,19 +465,21 @@ export class DictionaryService {
   /**
    * Get lemma for a word
    */
-  public async getLemma(request: LemmaRequest): Promise<{ success: boolean; result?: LemmaResponse; error?: string }> {
+  public async getLemma(
+    request: LemmaRequest,
+  ): Promise<{ success: boolean; result?: LemmaResponse; error?: string }> {
     try {
       const result = await this.ai.getLemma(request);
-      
+
       return {
         success: true,
         result,
       };
     } catch (error) {
-      console.error('Error in getLemma:', error);
+      console.error("Error in getLemma:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -402,7 +490,7 @@ export class DictionaryService {
   public async getContextualLemma(
     word: string,
     contextSentence: string,
-    targetLanguage: string
+    targetLanguage: string,
   ): Promise<{ success: boolean; result?: LemmaResponse; error?: string }> {
     try {
       const result = await this.ai.getLemmaWithContext({
@@ -410,16 +498,16 @@ export class DictionaryService {
         contextSentence,
         targetLanguage,
       });
-      
+
       return {
         success: true,
         result,
       };
     } catch (error) {
-      console.error('Error in getContextualLemma:', error);
+      console.error("Error in getContextualLemma:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -429,32 +517,30 @@ export class DictionaryService {
   /**
    * Get all available languages
    */
-  public async getAllLanguages(): Promise<{ 
-    success: boolean; 
-    languages?: { 
-      sourceLanguages: string[]; 
-      targetLanguages: string[]; 
-      definitionLanguages: string[] 
-    }; 
-    error?: string 
+  public async getAllLanguages(): Promise<{
+    success: boolean;
+    languages?: {
+      sourceLanguages: string[];
+      targetLanguages: string[];
+      definitionLanguages: string[];
+    };
+    error?: string;
   }> {
     try {
       const languages = await this.db.getAllLanguages();
-      
+
       return {
         success: true,
         languages,
       };
     } catch (error) {
-      console.error('Error in getAllLanguages:', error);
+      console.error("Error in getAllLanguages:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
-
-
 
   // ===== ANALYTICS OPERATIONS =====
 
@@ -463,16 +549,16 @@ export class DictionaryService {
    */
   public async getDictionaryStats(
     sourceLanguage?: string,
-    targetLanguage?: string
-  ): Promise<{ 
-    success: boolean; 
+    targetLanguage?: string,
+  ): Promise<{
+    success: boolean;
     stats?: {
-      overview: ReturnType<DatabaseManager['getDatabaseStats']>;
-      searchStats: Awaited<ReturnType<DatabaseManager['getSearchStats']>>;
-      cacheStats: Awaited<ReturnType<DatabaseManager['getCacheStats']>>;
-      languages: Awaited<ReturnType<DatabaseManager['getAllLanguages']>>;
-    }; 
-    error?: string 
+      overview: Awaited<ReturnType<DatabaseManager["getDatabaseStats"]>>;
+      searchStats: Awaited<ReturnType<DatabaseManager["getSearchStats"]>>;
+      cacheStats: Awaited<ReturnType<DatabaseManager["getCacheStats"]>>;
+      languages: Awaited<ReturnType<DatabaseManager["getAllLanguages"]>>;
+    };
+    error?: string;
   }> {
     try {
       const [searchStats, cacheStats, languages] = await Promise.all([
@@ -480,7 +566,7 @@ export class DictionaryService {
         this.db.getCacheStats(),
         this.db.getAllLanguages(),
       ]);
-      const overview = this.db.getDatabaseStats();
+      const overview = await this.db.getDatabaseStats();
 
       return {
         success: true,
@@ -492,10 +578,10 @@ export class DictionaryService {
         },
       };
     } catch (error) {
-      console.error('Error in getDictionaryStats:', error);
+      console.error("Error in getDictionaryStats:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -506,20 +592,28 @@ export class DictionaryService {
   public async getRecentActivity(
     sourceLanguage: string,
     targetLanguage: string,
-    limit = 10
-  ): Promise<{ success: boolean; entries?: DictionaryEntry[]; error?: string }> {
+    limit = 10,
+  ): Promise<{
+    success: boolean;
+    entries?: DictionaryEntry[];
+    error?: string;
+  }> {
     try {
-      const entries = await this.db.getRecentEntries(sourceLanguage, targetLanguage, limit);
-      
+      const entries = await this.db.getRecentEntries(
+        sourceLanguage,
+        targetLanguage,
+        limit,
+      );
+
       return {
         success: true,
         entries,
       };
     } catch (error) {
-      console.error('Error in getRecentActivity:', error);
+      console.error("Error in getRecentActivity:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -529,21 +623,24 @@ export class DictionaryService {
   /**
    * Perform database maintenance
    */
-  public async performMaintenance(): Promise<{ success: boolean; error?: string }> {
+  public async performMaintenance(): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
     try {
       await this.db.runMaintenance();
-      
+
       // Also clear expired cache entries
       await this.db.clearExpiredLemmaCache();
-      
+
       return {
         success: true,
       };
     } catch (error) {
-      console.error('Error in performMaintenance:', error);
+      console.error("Error in performMaintenance:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -551,23 +648,23 @@ export class DictionaryService {
   /**
    * Run database health check
    */
-  public async runHealthCheck(): Promise<{ 
-    success: boolean; 
-    report?: Awaited<ReturnType<DatabaseManager['getDatabaseHealthReport']>>; 
-    error?: string 
+  public async runHealthCheck(): Promise<{
+    success: boolean;
+    report?: Awaited<ReturnType<DatabaseManager["getDatabaseHealthReport"]>>;
+    error?: string;
   }> {
     try {
       const report = await this.db.getDatabaseHealthReport();
-      
+
       return {
         success: true,
         report,
       };
     } catch (error) {
-      console.error('Error in runHealthCheck:', error);
+      console.error("Error in runHealthCheck:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -575,7 +672,10 @@ export class DictionaryService {
   /**
    * Initialize database with migrations and sample data
    */
-  public async initializeDatabase(): Promise<{ success: boolean; error?: string }> {
+  public async initializeDatabase(): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
     try {
       // Check and run migrations
       const needsMigration = await this.db.checkMigrationNeeded();
@@ -584,7 +684,7 @@ export class DictionaryService {
       }
 
       // Initialize sample data if database is empty (development only)
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         await this.db.initializeSampleData();
       }
 
@@ -592,10 +692,10 @@ export class DictionaryService {
         success: true,
       };
     } catch (error) {
-      console.error('Error in initializeDatabase:', error);
+      console.error("Error in initializeDatabase:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -608,24 +708,33 @@ export class DictionaryService {
   public async bulkCreateEntries(
     words: string[],
     sourceLanguage: string,
-    targetLanguage: string
-  ): Promise<{ 
-    success: boolean; 
-    results?: Array<{ word: string; success: boolean; entry?: DictionaryEntry; error?: string }>; 
-    error?: string 
+    targetLanguage: string,
+  ): Promise<{
+    success: boolean;
+    results?: Array<{
+      word: string;
+      success: boolean;
+      entry?: DictionaryEntry;
+      error?: string;
+    }>;
+    error?: string;
   }> {
     try {
       const results = [];
-      
+
       for (const word of words) {
-        const result = await this.createEntry(word, sourceLanguage, targetLanguage);
+        const result = await this.createEntry(
+          word,
+          sourceLanguage,
+          targetLanguage,
+        );
         results.push({
           word,
           ...result,
         });
-        
+
         // Small delay to avoid overwhelming the AI API
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       return {
@@ -633,10 +742,10 @@ export class DictionaryService {
         results,
       };
     } catch (error) {
-      console.error('Error in bulkCreateEntries:', error);
+      console.error("Error in bulkCreateEntries:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -646,14 +755,14 @@ export class DictionaryService {
    */
   public async exportEntries(
     sourceLanguage?: string,
-    targetLanguage?: string
+    targetLanguage?: string,
   ): Promise<{ success: boolean; data?: DictionaryEntry[]; error?: string }> {
     try {
       const result = await this.db.getEntriesForLanguages(
-        sourceLanguage || '',
-        targetLanguage || '',
+        sourceLanguage || "",
+        targetLanguage || "",
         1,
-        10000 // Large page size to get all entries
+        10000, // Large page size to get all entries
       );
 
       return {
@@ -661,10 +770,10 @@ export class DictionaryService {
         data: result.entries,
       };
     } catch (error) {
-      console.error('Error in exportEntries:', error);
+      console.error("Error in exportEntries:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -672,29 +781,27 @@ export class DictionaryService {
   /**
    * Import entries from JSON
    */
-  public async importEntries(
-    entries: DictionaryEntry[]
-  ): Promise<{ 
-    success: boolean; 
-    results?: Array<{ headword: string; success: boolean; error?: string }>; 
-    error?: string 
+  public async importEntries(entries: DictionaryEntry[]): Promise<{
+    success: boolean;
+    results?: Array<{ headword: string; success: boolean; error?: string }>;
+    error?: string;
   }> {
     try {
       const results = [];
-      
+
       for (const entry of entries) {
         try {
           const entryId = await this.db.addEntry(entry);
           results.push({
             headword: entry.headword,
             success: !!entryId,
-            error: entryId ? undefined : 'Failed to save entry',
+            error: entryId ? undefined : "Failed to save entry",
           });
         } catch (error) {
           results.push({
             headword: entry.headword,
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : "Unknown error",
           });
         }
       }
@@ -704,10 +811,10 @@ export class DictionaryService {
         results,
       };
     } catch (error) {
-      console.error('Error in importEntries:', error);
+      console.error("Error in importEntries:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }

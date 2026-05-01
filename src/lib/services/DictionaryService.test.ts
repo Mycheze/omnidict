@@ -52,6 +52,7 @@ vi.mock("@/lib/ai", () => {
       ...mockAi,
       getInstance: () => mockAi,
       configure: mockAi.configure,
+      createProviderInstance: vi.fn(() => mockAi),
     },
   };
 });
@@ -798,11 +799,30 @@ describe("DictionaryService", () => {
     });
   });
 
-  describe("configureAI", () => {
-    it("calls AIManager.configure with provider settings", () => {
-      service.configureAI("chatgpt", "sk-test", "gpt-4o");
+  describe("per-request AI provider config", () => {
+    it("creates a provider instance when providerConfig is passed to createEntry", async () => {
+      const sampleEntry = makeSampleEntry();
+      (
+        AIManager.createProviderInstance as ReturnType<typeof vi.fn>
+      ).mockReturnValue(AIManager.getInstance());
+      (mockDb.getEntryByHeadword as ReturnType<typeof vi.fn>).mockResolvedValue(
+        null,
+      );
+      (
+        AIManager.getInstance().getLemma as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ lemma: "test", cached: false });
+      (
+        AIManager.getInstance().generateEntry as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(sampleEntry);
+      (mockDb.addEntry as ReturnType<typeof vi.fn>).mockResolvedValue(1);
 
-      expect(AIManager.configure).toHaveBeenCalledWith({
+      await service.createEntry("test", "English", "Czech", undefined, {
+        providerType: "chatgpt",
+        apiKey: "sk-test",
+        model: "gpt-4o",
+      });
+
+      expect(AIManager.createProviderInstance).toHaveBeenCalledWith({
         providerType: "chatgpt",
         apiKey: "sk-test",
         model: "gpt-4o",
