@@ -2,7 +2,7 @@
 export interface DatabaseEntry {
   id: number;
   headword: string;
-  part_of_speech: string;  // Always string in database (JSON when array)
+  part_of_speech: string; // Always string in database (JSON when array)
   source_language: string;
   target_language: string;
   definition_language: string;
@@ -131,20 +131,6 @@ export interface EntryGenerationRequest {
   definitionLanguage: string;
 }
 
-// User Settings Types
-export interface UserSettings {
-  languages: LanguageSettings;
-  preferences: {
-    autoSave: boolean;
-    showTranslations: boolean;
-    enableClipboardMonitoring: boolean;
-  };
-  ai: {
-    provider: 'deepseek' | 'openai';
-    temperature: number;
-  };
-}
-
 // API Response Types
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -174,45 +160,6 @@ export interface LanguageSelectorProps {
   label?: string;
 }
 
-// Simplified Language Settings (for the new UI)
-export interface SimplifiedLanguageSettings {
-  sourceLanguage: string;
-  targetLanguage: string;
-}
-
-// Updated User Settings for simplified version
-export interface SimplifiedUserSettings {
-  languages: SimplifiedLanguageSettings;
-  preferences: {
-    autoSave: boolean;
-    showTranslations: boolean;
-    enableClipboardMonitoring: boolean;
-  };
-  ai: {
-    provider: 'deepseek' | 'openai';
-    temperature: number;
-  };
-}
-
-// Queue System Types
-export interface QueuedRequest {
-  id: string;
-  type: 'create' | 'regenerate' | 'get' | 'delete' | 'lemma';
-  word: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  startTime: number;
-  result?: any;
-  error?: string;
-  sourceLanguage?: string;
-  targetLanguage?: string;
-}
-
-export interface ApiQueueState {
-  queue: QueuedRequest[];
-  activeRequests: QueuedRequest[];
-  completedRequests: QueuedRequest[];
-}
-
 // Anki-related types
 export interface AnkiDeck {
   name: string;
@@ -225,7 +172,14 @@ export interface AnkiNoteType {
 
 export interface AnkiFieldMapping {
   ankiField: string;
-  deepDictField: 'headword' | 'definition' | 'partOfSpeech' | 'example' | 'translation' | 'tags' | 'none';
+  deepDictField:
+    | "headword"
+    | "definition"
+    | "partOfSpeech"
+    | "example"
+    | "translation"
+    | "tags"
+    | "none";
   staticValue?: string; // For hardcoded values like tags
 }
 
@@ -263,9 +217,9 @@ export interface ExportContext {
 
 export interface ManagedLanguage {
   standardizedName: string; // Base language name for DB (e.g., "Spanish")
-  displayName: string;     // User's preferred display name (e.g., "Español")
-  visible: boolean;        // Whether to show in dropdowns
-  isCustom: boolean;       // Whether user added this (vs from DB)
+  displayName: string; // User's preferred display name (e.g., "Español")
+  visible: boolean; // Whether to show in dropdowns
+  isCustom: boolean; // Whether user added this (vs from DB)
 }
 
 export interface LanguageValidationRequest {

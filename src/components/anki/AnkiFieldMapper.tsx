@@ -1,46 +1,56 @@
-'use client';
+"use client";
 
-import { ChevronDown, Check, Plus, X } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { useAnkiStore } from '@/stores/ankiStore';
-import { AnkiFieldMapping } from '@/lib/types';
+import { ChevronDown, Check, Plus, X } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useAnkiStore } from "@/stores/ankiStore";
+import { AnkiFieldMapping } from "@/lib/types";
 
 const DEEPDICT_FIELDS = [
-  { value: 'headword', label: 'Headword' },
-  { value: 'definition', label: 'Definition(s)' },
-  { value: 'partOfSpeech', label: 'Part of Speech' },
-  { value: 'example', label: 'Example Sentence' },
-  { value: 'translation', label: 'Sentence Translation' },
-  { value: 'tags', label: 'Tags' },
-  { value: 'none', label: 'Not mapped' },
+  { value: "headword", label: "Headword" },
+  { value: "definition", label: "Definition(s)" },
+  { value: "partOfSpeech", label: "Part of Speech" },
+  { value: "example", label: "Example Sentence" },
+  { value: "translation", label: "Sentence Translation" },
+  { value: "tags", label: "Tags" },
+  { value: "none", label: "Not mapped" },
 ] as const;
 
 export function AnkiFieldMapper() {
-  const { 
-    availableNoteTypes, 
-    noteType, 
-    fieldMappings, 
+  const {
+    availableNoteTypes,
+    noteType,
+    fieldMappings,
     tags,
     setFieldMappings,
-    setTags 
+    setTags,
   } = useAnkiStore();
 
-  const [tagInput, setTagInput] = useState('');
+  const [tagInput, setTagInput] = useState("");
 
-  const selectedNoteType = availableNoteTypes.find(nt => nt.name === noteType);
+  const selectedNoteType = availableNoteTypes.find(
+    (nt) => nt.name === noteType,
+  );
 
   if (!selectedNoteType) {
     return null;
   }
 
-  const updateFieldMapping = (ankiField: string, deepDictField: string, staticValue?: string) => {
-    const updatedMappings = fieldMappings.map(mapping =>
+  const updateFieldMapping = (
+    ankiField: string,
+    deepDictField: string,
+    staticValue?: string,
+  ) => {
+    const updatedMappings = fieldMappings.map((mapping) =>
       mapping.ankiField === ankiField
-        ? { ankiField, deepDictField: deepDictField as AnkiFieldMapping['deepDictField'], staticValue }
-        : mapping
+        ? {
+            ankiField,
+            deepDictField: deepDictField as AnkiFieldMapping["deepDictField"],
+            staticValue,
+          }
+        : mapping,
     );
     setFieldMappings(updatedMappings);
   };
@@ -48,12 +58,12 @@ export function AnkiFieldMapper() {
   const addTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()]);
-      setTagInput('');
+      setTagInput("");
     }
   };
 
   const removeTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag));
+    setTags(tags.filter((t) => t !== tag));
   };
 
   return (
@@ -81,7 +91,7 @@ export function AnkiFieldMapper() {
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               placeholder="Add tag..."
-              onKeyPress={(e) => e.key === 'Enter' && addTag()}
+              onKeyDown={(e) => e.key === "Enter" && addTag()}
               className="flex-1"
             />
             <Button onClick={addTag} variant="outline" size="sm">
@@ -111,17 +121,23 @@ export function AnkiFieldMapper() {
 }
 
 // Helper component for individual field mapping rows
-function FieldMappingRow({ 
-  mapping, 
-  onUpdate 
-}: { 
-  mapping: AnkiFieldMapping; 
-  onUpdate: (ankiField: string, deepDictField: string, staticValue?: string) => void;
+function FieldMappingRow({
+  mapping,
+  onUpdate,
+}: {
+  mapping: AnkiFieldMapping;
+  onUpdate: (
+    ankiField: string,
+    deepDictField: string,
+    staticValue?: string,
+  ) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [staticValue, setStaticValue] = useState(mapping.staticValue || '');
+  const [staticValue, setStaticValue] = useState(mapping.staticValue || "");
 
-  const selectedField = DEEPDICT_FIELDS.find(f => f.value === mapping.deepDictField);
+  const selectedField = DEEPDICT_FIELDS.find(
+    (f) => f.value === mapping.deepDictField,
+  );
 
   return (
     <div className="flex items-center space-x-3 p-3 border rounded-lg">
@@ -129,22 +145,22 @@ function FieldMappingRow({
         <div className="font-medium text-sm">{mapping.ankiField}</div>
         <div className="text-xs text-muted-foreground">Anki field</div>
       </div>
-      
+
       <div className="text-xs text-muted-foreground">→</div>
-      
+
       <div className="flex-1 relative">
         <Button
           variant="outline"
           onClick={() => setIsOpen(!isOpen)}
           className="w-full justify-between text-sm"
         >
-          <span>{selectedField?.label || 'Select field...'}</span>
+          <span>{selectedField?.label || "Select field..."}</span>
           <ChevronDown className="h-3 w-3" />
         </Button>
 
         {isOpen && (
           <>
-            <div 
+            <div
               className="fixed inset-0 z-10"
               onClick={() => setIsOpen(false)}
             />
@@ -160,7 +176,9 @@ function FieldMappingRow({
                     className="w-full text-left px-3 py-2 text-sm rounded hover:bg-muted transition-colors flex items-center justify-between"
                   >
                     <span>{field.label}</span>
-                    {mapping.deepDictField === field.value && <Check className="h-3 w-3 text-primary" />}
+                    {mapping.deepDictField === field.value && (
+                      <Check className="h-3 w-3 text-primary" />
+                    )}
                   </button>
                 ))}
               </CardContent>
@@ -169,13 +187,17 @@ function FieldMappingRow({
         )}
       </div>
 
-      {mapping.deepDictField === 'tags' && (
+      {mapping.deepDictField === "tags" && (
         <div className="flex-1">
           <Input
             value={staticValue}
             onChange={(e) => {
               setStaticValue(e.target.value);
-              onUpdate(mapping.ankiField, mapping.deepDictField, e.target.value);
+              onUpdate(
+                mapping.ankiField,
+                mapping.deepDictField,
+                e.target.value,
+              );
             }}
             placeholder="Custom tags..."
             className="text-sm"

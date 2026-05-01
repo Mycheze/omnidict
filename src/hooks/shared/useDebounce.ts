@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from "react";
 
 /**
  * Simple, stable debounce hook that prevents infinite loops
@@ -44,10 +44,7 @@ export function useDebounce<T>(value: T, delay: number): T {
  * Immediate + debounced values for optimal UX
  * Returns [immediateValue, debouncedValue] to eliminate input lag
  */
-export function useImmediateDebounce<T>(
-  value: T, 
-  delay: number
-): [T, T] {
+export function useImmediateDebounce<T>(value: T, delay: number): [T, T] {
   const debouncedValue = useDebounce(value, delay);
   return [value, debouncedValue];
 }
@@ -58,7 +55,7 @@ export function useImmediateDebounce<T>(
 export function useDebouncedCallback<Args extends any[]>(
   callback: (...args: Args) => void,
   delay: number,
-  deps: React.DependencyList = []
+  deps: React.DependencyList = [],
 ) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const callbackRef = useRef(callback);
@@ -66,7 +63,7 @@ export function useDebouncedCallback<Args extends any[]>(
   // Update callback ref when dependencies change
   useEffect(() => {
     callbackRef.current = callback;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callback, ...deps]);
 
   const debouncedCallback = useCallback(
@@ -79,7 +76,7 @@ export function useDebouncedCallback<Args extends any[]>(
         callbackRef.current(...args);
       }, delay);
     },
-    [delay]
+    [delay],
   );
 
   // Cleanup on unmount
@@ -101,7 +98,7 @@ export function useDebouncedCallback<Args extends any[]>(
  */
 export function useDebouncedState<T>(
   initialValue: T,
-  delay: number
+  delay: number,
 ): [T, T, (value: T | ((prev: T) => T)) => void] {
   const [immediateValue, setImmediateValue] = useState(initialValue);
   const debouncedValue = useDebounce(immediateValue, delay);
@@ -127,10 +124,13 @@ export function useThrottle<T>(value: T, interval: number): T {
       lastUpdated.current = now;
       setThrottledValue(value);
     } else {
-      const timer = setTimeout(() => {
-        lastUpdated.current = Date.now();
-        setThrottledValue(value);
-      }, interval - (now - lastUpdated.current));
+      const timer = setTimeout(
+        () => {
+          lastUpdated.current = Date.now();
+          setThrottledValue(value);
+        },
+        interval - (now - lastUpdated.current),
+      );
 
       return () => clearTimeout(timer);
     }
@@ -145,27 +145,27 @@ export function useThrottle<T>(value: T, interval: number): T {
 export function useThrottledCallback<Args extends any[]>(
   callback: (...args: Args) => void,
   interval: number,
-  deps: React.DependencyList = []
+  deps: React.DependencyList = [],
 ) {
   const lastCalled = useRef<number>(0);
   const callbackRef = useRef(callback);
 
   // Update callback ref when dependencies change
   useEffect(() => {
-    callbackRef.current = callback;``
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    callbackRef.current = callback;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callback, ...deps]);
 
   const throttledCallback = useCallback(
     (...args: Args) => {
       const now = Date.now();
-      
+
       if (now >= lastCalled.current + interval) {
         lastCalled.current = now;
         callbackRef.current(...args);
       }
     },
-    [interval]
+    [interval],
   );
 
   return throttledCallback;
@@ -180,7 +180,7 @@ export function useSmartDebounce<T>(
   options: {
     minDelay?: number;
     maxDelay?: number;
-  } = {}
+  } = {},
 ): T {
   const { minDelay = 100, maxDelay = 1000 } = options;
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -190,14 +190,14 @@ export function useSmartDebounce<T>(
   useEffect(() => {
     const now = Date.now();
     const timeSinceLastChange = now - lastChangeRef.current;
-    
+
     // Adapt delay based on change frequency
     let adaptedDelay = baseDelay;
     if (timeSinceLastChange < 200) {
       // Fast typing - use shorter delay
       adaptedDelay = Math.max(minDelay, baseDelay * 0.5);
     } else if (timeSinceLastChange > 2000) {
-      // Slow typing - use longer delay  
+      // Slow typing - use longer delay
       adaptedDelay = Math.min(maxDelay, baseDelay * 1.5);
     }
 
