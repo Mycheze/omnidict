@@ -1,53 +1,50 @@
-import { DictionaryService } from '@/lib/services/DictionaryService';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
+import { validateEntryRequest, sanitizeError } from "@/lib/security/validation";
+import { DictionaryService } from "@/lib/services/DictionaryService";
 
 /**
  * POST /api/dictionary
  * Main endpoint to create dictionary entries with AI provider configuration
  */
-export async function POST(request: NextRequest) {
+async function dictionaryHandler(request: NextRequest) {
+  const rawBody = await request.json();
+  const {
+    word,
+    sourceLanguage,
+    targetLanguage,
+    contextSentence,
+    providerType,
+    apiKey,
+    model,
+  } = validateEntryRequest(rawBody);
+
+  const service = DictionaryService.getInstance();
+
   try {
-    const body = await request.json();
-    const {
-      word,
-      sourceLanguage,
-      targetLanguage,
-      contextSentence,
-      providerType,
-      apiKey,
-      model,
-    } = body;
-
-    if (!word || !sourceLanguage || !targetLanguage) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    const service = DictionaryService.getInstance();
-
-    // Configure AI provider if specified
-    if (providerType) {
-      service.configureAI(providerType, apiKey, model);
-    }
-
     const result = await service.createEntry(
       word,
       sourceLanguage,
       targetLanguage,
-      contextSentence
+      contextSentence,
+      providerType ? { providerType, apiKey, model } : undefined,
     );
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error creating dictionary entry:', error);
+    console.error("Error creating dictionary entry:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: sanitizeError(error),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
+
+// Export the secured handler
+export const POST = withSecurity(dictionaryHandler, {
+  ...DEFAULT_SECURITY,
+  rateLimit: { maxRequests: 50, windowMs: 60000 },
+});

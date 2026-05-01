@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import DatabaseManager from '@/lib/database';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, RELAXED_SECURITY } from "@/lib/security/middleware";
+import { sanitizeError } from "@/lib/security/validation";
+import DatabaseManager from "@/lib/database";
 
-export async function POST(req: NextRequest) {
+async function paginationIndexHandler(req: NextRequest) {
   try {
     const filters = await req.json();
     const db = DatabaseManager.getInstance();
-    
+
     // Default to a page size of 50, same as the main list
     const index = await db.getPaginationIndex(filters, 50);
 
@@ -14,10 +16,13 @@ export async function POST(req: NextRequest) {
       data: index,
     });
   } catch (error) {
-    console.error('Error fetching pagination index:', error);
+    console.error("Error fetching pagination index:", error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch pagination index' },
-      { status: 500 }
+      { success: false, error: sanitizeError(error) },
+      { status: 500 },
     );
   }
 }
+
+// Export the secured handler
+export const POST = withSecurity(paginationIndexHandler, RELAXED_SECURITY);

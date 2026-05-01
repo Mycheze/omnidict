@@ -1,37 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
-import DatabaseManager from '@/lib/database';
-import { ApiResponse, DictionaryEntry } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
+import DatabaseManager from "@/lib/database";
+import { ApiResponse, DictionaryEntry } from "@/lib/types";
 
 async function getEntryHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const headword = searchParams.get('headword');
-    const sourceLanguage = searchParams.get('sourceLanguage') || undefined;
-    const targetLanguage = searchParams.get('targetLanguage') || undefined;
+    const headword = searchParams.get("headword");
+    const sourceLanguage = searchParams.get("sourceLanguage") || undefined;
+    const targetLanguage = searchParams.get("targetLanguage") || undefined;
 
     if (!headword) {
       const response: ApiResponse = {
         success: false,
-        error: 'Headword parameter is required',
+        error: "Headword parameter is required",
       };
       return NextResponse.json(response, { status: 400 });
     }
 
     const db = DatabaseManager.getInstance();
-    
-    // Try to find entry with exact language match first
-    let entry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
-    
-    // If not found and we have language filters, try without definition language filter
-    if (!entry && sourceLanguage && targetLanguage) {
-      entry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
-    }
+
+    const entry = await db.getEntryByHeadword(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+    );
 
     if (!entry) {
       const response: ApiResponse = {
         success: false,
-        error: 'Entry not found',
+        error: "Entry not found",
       };
       return NextResponse.json(response, { status: 404 });
     }
@@ -43,11 +41,11 @@ async function getEntryHandler(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in entries get API:', error);
-    
+    console.error("Error in entries get API:", error);
+
     const response: ApiResponse = {
       success: false,
-      error: 'Failed to get entry',
+      error: "Failed to get entry",
     };
 
     return NextResponse.json(response, { status: 500 });

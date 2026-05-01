@@ -1,101 +1,75 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
-import DatabaseManager from '@/lib/database';
-import AIManager from '@/lib/ai';
-import { ApiResponse, DictionaryEntry } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
+import {
+  WordSchema,
+  LanguageSchema,
+  sanitizeError,
+} from "@/lib/security/validation";
+import { DictionaryService } from "@/lib/services/DictionaryService";
+import { ApiResponse, DictionaryEntry } from "@/lib/types";
+import { z } from "zod";
 
-interface SimplifiedRegenerateRequest {
-  headword: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  providerType?: string;
-  apiKey?: string;
-  model?: string;
-}
+const RegenerateRequestSchema = z.object({
+  headword: WordSchema,
+  sourceLanguage: LanguageSchema,
+  targetLanguage: LanguageSchema,
+  providerType: z.string().optional(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+});
 
 async function regenerateEntryHandler(request: NextRequest) {
+  const rawBody = await request.json();
+  const {
+    headword,
+    sourceLanguage,
+    targetLanguage,
+    providerType,
+    apiKey,
+    model,
+  } = RegenerateRequestSchema.parse(rawBody);
+
+  console.log(
+    "Regenerating entry for:",
+    headword,
+    `(${sourceLanguage} → ${targetLanguage})`,
+    providerType ? `using ${providerType}` : "",
+  );
+
+  const dictionaryService = DictionaryService.getInstance();
+
   try {
-    const { headword, sourceLanguage, targetLanguage, providerType, apiKey, model }: SimplifiedRegenerateRequest = await request.json();
-
-    if (!headword || !sourceLanguage || !targetLanguage) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Missing required parameters: headword, sourceLanguage, targetLanguage',
-      };
-      return NextResponse.json(response, { status: 400 });
-    }
-
-    console.log('Regenerating entry for:', headword, `(${sourceLanguage} → ${targetLanguage})`,
-                providerType ? `using ${providerType}/${model}` : '');
-
-    const db = DatabaseManager.getInstance();
-    const ai = AIManager.getInstance();
-
-    // Check if entry exists
-    const existingEntry = await db.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
-    if (!existingEntry) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Entry not found',
-      };
-      return NextResponse.json(response, { status: 404 });
-    }
-
-    // Delete the existing entry
-    const deleted = await db.deleteEntry(headword, sourceLanguage, targetLanguage);
-    if (!deleted) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Failed to delete existing entry',
-      };
-      return NextResponse.json(response, { status: 500 });
-    }
-
-    // Configure AI provider if specified
-    if (providerType) {
-      AIManager.configure({ providerType: providerType as any, apiKey, model });
-    }
-
-    // Generate new entry with variation
-    const newEntry = await ai.regenerateEntry({
-      word: headword,
+    const result = await dictionaryService.regenerateEntry(
+      headword,
       sourceLanguage,
       targetLanguage,
-    });
+      providerType ? { providerType, apiKey, model } : undefined,
+    );
 
-    if (!newEntry) {
+    if (!result.success) {
       const response: ApiResponse = {
         success: false,
-        error: 'Failed to regenerate entry',
+        error: result.error || "Failed to regenerate entry",
       };
-      return NextResponse.json(response, { status: 500 });
+      const status = result.error === "Entry not found" ? 404 : 500;
+      return NextResponse.json(response, { status });
     }
 
-    // Save the new entry
-    const entryId = await db.addEntry(newEntry);
-    if (!entryId) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Failed to save regenerated entry',
-      };
-      return NextResponse.json(response, { status: 500 });
-    }
-
-    console.log('Entry regenerated successfully:', newEntry.headword);
+    console.log("Entry regenerated successfully:", result.entry?.headword);
 
     const response: ApiResponse<DictionaryEntry> = {
       success: true,
-      data: newEntry,
-      message: 'Entry regenerated successfully',
+      data: result.entry!,
+      message: "Entry regenerated successfully",
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in entries regenerate API:', error);
-    
+    console.error("Error in regenerateEntryHandler:", error);
+
     const response: ApiResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to regenerate entry',
+      error: sanitizeError(error),
     };
 
     return NextResponse.json(response, { status: 500 });
