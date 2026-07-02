@@ -3,12 +3,22 @@ import { withSecurity, STRICT_SECURITY } from "@/lib/security/middleware";
 import { sanitizeError } from "@/lib/security/validation";
 import { DictionaryService } from "@/lib/services/DictionaryService";
 import { ApiResponse } from "@/lib/types";
+import { z } from "zod";
 
-async function maintenanceHandler(_request: NextRequest) {
+const MaintenanceRequestSchema = z.object({
+  flushLemmaCache: z.boolean().optional().default(false),
+});
+
+async function maintenanceHandler(request: NextRequest) {
   const dictionaryService = DictionaryService.getInstance();
 
   try {
-    const result = await dictionaryService.performMaintenance();
+    const rawBody = await request.json().catch(() => ({}));
+    const { flushLemmaCache } = MaintenanceRequestSchema.parse(rawBody);
+
+    const result = await dictionaryService.performMaintenance({
+      flushLemmaCache,
+    });
 
     if (!result.success) {
       const response: ApiResponse = {

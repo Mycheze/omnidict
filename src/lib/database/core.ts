@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { createClient } from "@libsql/client";
+import { AsyncLocalStorage } from "async_hooks";
 import path from "path";
 import { promises as fs } from "fs";
 
@@ -24,6 +25,12 @@ interface DatabaseInterface {
   exec(sql: string): Promise<void> | void;
   pragma?(pragma: string): any;
   close(): Promise<void> | void;
+  /**
+   * Run fn atomically. Statements executed inside fn join the transaction;
+   * concurrent transactions are serialized. Plain BEGIN/COMMIT via exec()
+   * does NOT work on Turso — each HTTP execute auto-commits.
+   */
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 interface PreparedStatement {
@@ -38,20 +45,29 @@ interface PreparedStatement {
 
 // Wrapper for libSQL client to match better-sqlite3 interface
 class LibSQLWrapper implements DatabaseInterface {
+  // Statements issued inside transaction() find their tx handle here, so
+  // concurrent non-transactional requests keep using the plain client
+  private txStorage = new AsyncLocalStorage<any>();
+  private txLock: Promise<void> = Promise.resolve();
+
   constructor(private client: any) {}
+
+  private executor() {
+    return this.txStorage.getStore() ?? this.client;
+  }
 
   prepare(sql: string): PreparedStatement {
     return {
       get: async (...params: any[]) => {
-        const result = await this.client.execute({ sql, args: params });
+        const result = await this.executor().execute({ sql, args: params });
         return result.rows[0] || undefined;
       },
       all: async (...params: any[]) => {
-        const result = await this.client.execute({ sql, args: params });
+        const result = await this.executor().execute({ sql, args: params });
         return result.rows;
       },
       run: async (...params: any[]) => {
-        const result = await this.client.execute({ sql, args: params });
+        const result = await this.executor().execute({ sql, args: params });
         return {
           changes: result.rowsAffected,
           lastInsertRowid: result.lastInsertRowid || 0,
@@ -65,8 +81,35 @@ class LibSQLWrapper implements DatabaseInterface {
     const statements = sql.split(";").filter((s) => s.trim());
     for (const statement of statements) {
       if (statement.trim()) {
-        await this.client.execute(statement.trim());
+        await this.executor().execute(statement.trim());
       }
+    }
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    // Serialize transactions: libSQL interactive transactions hold a write
+    // lock, and overlapping ones would deadlock or interleave
+    let release!: () => void;
+    const previous = this.txLock;
+    this.txLock = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+
+    try {
+      const tx = await this.client.transaction("write");
+      try {
+        const result = await this.txStorage.run(tx, fn);
+        await tx.commit();
+        return result;
+      } catch (error) {
+        try {
+          await tx.rollback();
+        } catch {
+          // Original error is what matters; rollback of a dead tx can fail
+        }
+        throw error;
+      }
+    } finally {
+      release();
     }
   }
 
@@ -77,6 +120,8 @@ class LibSQLWrapper implements DatabaseInterface {
 
 // Wrapper for better-sqlite3 to make it async-compatible
 class SQLiteWrapper implements DatabaseInterface {
+  private txLock: Promise<void> = Promise.resolve();
+
   constructor(private db: Database.Database) {}
 
   prepare(sql: string): PreparedStatement {
@@ -90,6 +135,31 @@ class SQLiteWrapper implements DatabaseInterface {
 
   exec(sql: string): void {
     this.db.exec(sql);
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    // better-sqlite3 is synchronous, but fn awaits between statements, so
+    // serialize to keep concurrent transactions from interleaving
+    let release!: () => void;
+    const previous = this.txLock;
+    this.txLock = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+
+    try {
+      this.db.exec("BEGIN");
+      try {
+        const result = await fn();
+        this.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        if (this.db.inTransaction) {
+          this.db.exec("ROLLBACK");
+        }
+        throw error;
+      }
+    } finally {
+      release();
+    }
   }
 
   pragma(pragma: string): any {
@@ -533,9 +603,9 @@ export class DatabaseCore {
       `),
 
       getCachedLemma: db.prepare(`
-        SELECT lemma FROM lemma_cache 
+        SELECT lemma FROM lemma_cache
         WHERE word = ? AND target_language = ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
+        AND expires_at > datetime('now')
       `),
 
       setCachedLemma: db.prepare(`

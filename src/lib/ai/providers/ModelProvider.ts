@@ -1,4 +1,4 @@
-import { DictionaryEntry, LemmaResponse } from '@/lib/types';
+import { DictionaryEntry, ImageStyle, LemmaResponse } from "@/lib/types";
 
 /**
  * Configuration for AI provider
@@ -79,4 +79,14 @@ export interface ModelProvider {
     standardizedName: string;
     displayName: string;
   }>;
+
+  /**
+   * Write an image-generation prompt for a word's meaning (null = skip render)
+   */
+  generateImagePrompt(params: {
+    headword: string;
+    definition: string;
+    exampleSentence?: string;
+    style: ImageStyle;
+  }): Promise<string | null>;
 }

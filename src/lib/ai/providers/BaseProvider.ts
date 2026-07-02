@@ -1,7 +1,9 @@
 import { readFile } from "fs/promises";
+import { createHash } from "crypto";
 import path from "path";
 import { ModelProvider, ProviderTestResult } from "./ModelProvider";
-import { DictionaryEntry, LemmaResponse } from "@/lib/types";
+import { DictionaryEntry, ImageStyle, LemmaResponse } from "@/lib/types";
+import { IMAGE_STYLES } from "@/lib/media/imageStyles";
 import DatabaseManager from "@/lib/database";
 
 export interface ChatMessage {
@@ -20,7 +22,7 @@ export abstract class BaseProvider implements ModelProvider {
 
   protected abstract callApi(
     messages: ChatMessage[],
-    options: { temperature?: number; maxTokens?: number },
+    options: { temperature?: number; maxTokens?: number; thinking?: boolean },
   ): Promise<string>;
 
   abstract testConnection(): Promise<ProviderTestResult>;
@@ -168,16 +170,23 @@ export abstract class BaseProvider implements ModelProvider {
             content: processedPrompt,
           },
         ],
-        { temperature: 0.3, maxTokens: 100 },
+        // maxTokens must cover reasoning tokens when thinking is enabled
+        { temperature: 0.3, maxTokens: 1000, thinking: true },
       );
 
       const lemma = this.cleanLemma(text.trim());
+      if (!this.isValidLemma(lemma)) {
+        console.error(
+          `${this.providerName}: Invalid lemma response for "${params.word}": ${JSON.stringify(text)}`,
+        );
+        return { lemma: params.word, cached: false, fallback: true };
+      }
       await this.db.cacheLemma(params.word, lemma, params.targetLanguage);
 
       return { lemma, cached: false };
     } catch (error) {
       console.error(`${this.providerName}: Error getting lemma:`, error);
-      return { lemma: params.word, cached: false };
+      return { lemma: params.word, cached: false, fallback: true };
     }
   }
 
@@ -186,7 +195,11 @@ export abstract class BaseProvider implements ModelProvider {
     contextSentence: string;
     targetLanguage: string;
   }): Promise<LemmaResponse> {
-    const cacheKey = `${params.word}|${params.contextSentence.substring(0, 50)}`;
+    const contextHash = createHash("sha256")
+      .update(params.contextSentence)
+      .digest("hex")
+      .substring(0, 16);
+    const cacheKey = `${params.word}|ctx:${contextHash}`;
     const cachedLemma = await this.db.getCachedLemma(
       cacheKey,
       params.targetLanguage,
@@ -215,10 +228,17 @@ export abstract class BaseProvider implements ModelProvider {
             content: processedPrompt,
           },
         ],
-        { temperature: 0.3, maxTokens: 100 },
+        // maxTokens must cover reasoning tokens when thinking is enabled
+        { temperature: 0.3, maxTokens: 1000, thinking: true },
       );
 
       const lemma = this.cleanLemma(text.trim());
+      if (!this.isValidLemma(lemma)) {
+        console.error(
+          `${this.providerName}: Invalid contextual lemma response for "${params.word}": ${JSON.stringify(text)}`,
+        );
+        return { lemma: params.word, cached: false, fallback: true };
+      }
       await this.db.cacheLemma(cacheKey, lemma, params.targetLanguage);
 
       return { lemma, cached: false };
@@ -227,7 +247,7 @@ export abstract class BaseProvider implements ModelProvider {
         `${this.providerName}: Error getting contextual lemma:`,
         error,
       );
-      return { lemma: params.word, cached: false };
+      return { lemma: params.word, cached: false, fallback: true };
     }
   }
 
@@ -293,6 +313,80 @@ export abstract class BaseProvider implements ModelProvider {
       );
       return null;
     }
+  }
+
+  /**
+   * Write an image-generation prompt that illustrates a word's meaning.
+   * Fail-loud: returns null rather than a generic prompt so callers skip
+   * the render instead of producing a garbage image. Reasoning models burn
+   * output tokens on thinking, so the budget escalates across attempts.
+   */
+  async generateImagePrompt(params: {
+    headword: string;
+    definition: string;
+    exampleSentence?: string;
+    style: ImageStyle;
+  }): Promise<string | null> {
+    const styleConfig = IMAGE_STYLES[params.style];
+    const minPromptLength = 40;
+
+    const userMessage = `Word meaning: ${params.definition}
+${params.exampleSentence ? `Context sentence: ${params.exampleSentence}\n` : ""}
+Classify the meaning (concrete object / action / abstract state) and write an image prompt that makes a learner instantly recognize the concept.
+
+If it is a CONCRETE OBJECT, depict that real ordinary object clearly and literally (name it plainly in the prompt) — keep its true shape and function; do not embellish it into something fancier or magical.
+If it is an ACTION, show one subject clearly performing it.
+If it is ABSTRACT, show ONE ordinary, realistic HUMAN's plain expression/posture (or one obvious literal metaphor) conveying the state — no multi-element symbolic puzzles, and ABSOLUTELY NO animals, animal-headed/anthropomorphic characters, or puns on the English wording (illustrate the real meaning, never a wordplay).
+
+Do NOT render the word "${params.headword}" or any text in the image.`;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const text = await this.callApi(
+          [
+            { role: "system", content: styleConfig.systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          {
+            temperature: 0.6 + attempt * 0.1,
+            maxTokens: 1000 + attempt * 800,
+            thinking: true,
+          },
+        );
+
+        let prompt = text.trim();
+        if (!prompt || prompt.length < minPromptLength) {
+          console.warn(
+            `${this.providerName}: Bad image prompt for "${params.headword}" (len=${prompt.length}), retrying`,
+          );
+          continue;
+        }
+
+        const textLeakWords = [
+          "text",
+          "word",
+          "letter",
+          "writing",
+          "caption",
+          "label",
+          "inscription",
+        ];
+        if (textLeakWords.some((w) => prompt.toLowerCase().includes(w))) {
+          prompt += " No text or writing visible.";
+        }
+        return prompt;
+      } catch (error) {
+        console.error(
+          `${this.providerName}: Image prompt attempt ${attempt + 1} failed:`,
+          error,
+        );
+      }
+    }
+
+    console.error(
+      `${this.providerName}: Image prompt FAILED after 3 attempts for "${params.headword}" — render will be skipped`,
+    );
+    return null;
   }
 
   async validateLanguage(languageName: string): Promise<{
@@ -437,6 +531,15 @@ export abstract class BaseProvider implements ModelProvider {
 
     cleaned = cleaned.replace(/^[\s.,;:!?()]+|[\s.,;:!?()]+$/g, "").trim();
 
-    return cleaned || lemma;
+    return cleaned;
+  }
+
+  protected isValidLemma(lemma: string): boolean {
+    if (!lemma) return false;
+    if (lemma.includes("\n")) return false;
+    if (lemma.length > 100) return false;
+    // MWEs and idioms are legitimate; explanations/refusals are not
+    if (lemma.split(/\s+/).length > 8) return false;
+    return true;
   }
 }

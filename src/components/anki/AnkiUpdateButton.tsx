@@ -1,50 +1,60 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { RefreshCw, Check, X, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useAnkiStore } from '@/stores/ankiStore';
-import { useAnkiExport } from '@/hooks/useAnkiExport';
-import { ExportContext } from '@/lib/types';
+import { useState } from "react";
+import { RefreshCw, Check, X, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAnkiStore } from "@/stores/ankiStore";
+import { useAnkiExport } from "@/hooks/useAnkiExport";
+import { ExportContext } from "@/lib/types";
 
 interface AnkiUpdateButtonProps {
   context: ExportContext;
   className?: string;
 }
 
-export function AnkiUpdateButton({ context, className }: AnkiUpdateButtonProps) {
+export function AnkiUpdateButton({
+  context,
+  className,
+}: AnkiUpdateButtonProps) {
   const { enabled, connected, deck, noteType, fieldMappings } = useAnkiStore();
-  const { updateLastAnkiCard, isExporting } = useAnkiExport();
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const { updateLastAnkiCard } = useAnkiExport();
+  const [updateStatus, setUpdateStatus] = useState<
+    "idle" | "pending" | "success" | "error"
+  >("idle");
 
-  const isConfigured = enabled && connected && deck && noteType && 
-                      fieldMappings.some(m => m.deepDictField !== 'none');
+  const isConfigured =
+    enabled &&
+    connected &&
+    deck &&
+    noteType &&
+    fieldMappings.some((m) => m.deepDictField !== "none");
 
   if (!isConfigured) {
     return null;
   }
 
+  // Updates queue behind any in-flight export, so only this button's own
+  // operation shows progress — the rest of the app stays fully usable
   const handleUpdate = async () => {
+    setUpdateStatus("pending");
     try {
       await updateLastAnkiCard(context);
-      setUpdateStatus('success');
-      setTimeout(() => setUpdateStatus('idle'), 2000);
+      setUpdateStatus("success");
+      setTimeout(() => setUpdateStatus("idle"), 2000);
     } catch (error) {
-      console.error('Update failed:', error);
-      setUpdateStatus('error');
-      setTimeout(() => setUpdateStatus('idle'), 3000);
+      console.error("Update failed:", error);
+      setUpdateStatus("error");
+      setTimeout(() => setUpdateStatus("idle"), 3000);
     }
   };
 
   const getButtonContent = () => {
-    if (isExporting) {
-      return <Loader2 className="h-4 w-4 animate-spin" />;
-    }
-    
     switch (updateStatus) {
-      case 'success':
+      case "pending":
+        return <Loader2 className="h-4 w-4 animate-spin" />;
+      case "success":
         return <Check className="h-4 w-4 text-green-600" />;
-      case 'error':
+      case "error":
         return <X className="h-4 w-4 text-red-600" />;
       default:
         return <RefreshCw className="h-4 w-4" />;
@@ -53,12 +63,14 @@ export function AnkiUpdateButton({ context, className }: AnkiUpdateButtonProps) 
 
   const getButtonTitle = () => {
     switch (updateStatus) {
-      case 'success':
-        return 'Updated last Anki card successfully!';
-      case 'error':
-        return 'Update failed. Check Anki connection.';
+      case "pending":
+        return "Updating (queued if another export is running)...";
+      case "success":
+        return "Updated last Anki card successfully!";
+      case "error":
+        return "Update failed. Check Anki connection.";
       default:
-        return 'Update last Anki card';
+        return "Update last Anki card";
     }
   };
 
@@ -67,7 +79,7 @@ export function AnkiUpdateButton({ context, className }: AnkiUpdateButtonProps) 
       variant="ghost"
       size="sm"
       onClick={handleUpdate}
-      disabled={isExporting}
+      disabled={updateStatus === "pending"}
       title={getButtonTitle()}
       className={`h-8 w-8 p-0 hover:bg-muted ${className}`}
     >

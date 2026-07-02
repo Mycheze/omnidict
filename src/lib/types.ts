@@ -122,6 +122,8 @@ export interface LemmaRequest {
 export interface LemmaResponse {
   lemma: string;
   cached: boolean;
+  /** True when lemmatization failed and the original word was returned unchanged */
+  fallback?: boolean;
 }
 
 export interface EntryGenerationRequest {
@@ -179,6 +181,9 @@ export interface AnkiFieldMapping {
     | "example"
     | "translation"
     | "tags"
+    | "image"
+    | "wordAudio"
+    | "sentenceAudio"
     | "none";
   staticValue?: string; // For hardcoded values like tags
 }
@@ -213,6 +218,55 @@ export interface ExportContext {
   partOfSpeech: string | string[];
   example: string;
   translation?: string;
+  targetLanguage?: string; // Needed to resolve per-language media settings
+}
+
+// Media generation types
+export type MediaType = "image" | "wordAudio" | "sentenceAudio";
+
+/** Single source of truth for style ids — the Zod enum, the ImageStyle type,
+ * and the settings dropdown all derive from this list */
+export const IMAGE_STYLE_VALUES = [
+  "storybook",
+  "watercolor",
+  "gothic",
+  "photorealistic",
+  "flat",
+  "anime",
+  "sketch",
+] as const;
+
+export type ImageStyle = (typeof IMAGE_STYLE_VALUES)[number];
+
+/** Per-language media configuration, set by the user in settings */
+export interface LanguageMediaConfig {
+  googleLanguageCode: string; // e.g. "cs-CZ"
+  googleVoiceName: string; // e.g. "cs-CZ-Chirp3-HD-Achernar"; empty = Google default voice
+  elevenLabsVoiceId: string; // Voice ID from the user's ElevenLabs account
+  elevenLabsLanguageCode: string; // e.g. "cs"; empty = auto-detect
+  elevenLabsSpeed: number; // 0.7-1.2, lower = slower for learners
+  imageStyle: ImageStyle;
+}
+
+export interface GeneratedMedia {
+  filename: string;
+  data: string; // base64-encoded file content
+  mimeType: string;
+  cached: boolean;
+}
+
+export interface MediaGenerationResult {
+  image?: GeneratedMedia;
+  wordAudio?: GeneratedMedia;
+  sentenceAudio?: GeneratedMedia;
+  errors?: Partial<Record<MediaType, string>>;
+}
+
+/** Which media provider API keys are configured server-side */
+export interface MediaProviderStatus {
+  googleTts: boolean;
+  elevenLabs: boolean;
+  replicate: boolean;
 }
 
 export interface ManagedLanguage {

@@ -132,6 +132,8 @@ export function EntryDisplay({
                             partOfSpeech: currentEntry.part_of_speech,
                             example: example.sentence,
                             translation: example.translation,
+                            targetLanguage:
+                              currentEntry.metadata.target_language,
                           }}
                           className="shrink-0"
                         />
@@ -142,6 +144,8 @@ export function EntryDisplay({
                             partOfSpeech: currentEntry.part_of_speech,
                             example: example.sentence,
                             translation: example.translation,
+                            targetLanguage:
+                              currentEntry.metadata.target_language,
                           }}
                           className="shrink-0"
                         />

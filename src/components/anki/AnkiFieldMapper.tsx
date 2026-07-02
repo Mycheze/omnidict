@@ -15,6 +15,9 @@ const DEEPDICT_FIELDS = [
   { value: "example", label: "Example Sentence" },
   { value: "translation", label: "Sentence Translation" },
   { value: "tags", label: "Tags" },
+  { value: "image", label: "Image (generated)" },
+  { value: "wordAudio", label: "Word Audio (generated)" },
+  { value: "sentenceAudio", label: "Sentence Audio (generated)" },
   { value: "none", label: "Not mapped" },
 ] as const;
 

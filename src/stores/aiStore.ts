@@ -95,7 +95,33 @@ export const useAIStore = create<AIState>()(
     }),
     {
       name: "omnidict-ai-settings",
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        // Guard rather than assert: localStorage contents are untrusted
+        if (
+          persistedState === null ||
+          typeof persistedState !== "object" ||
+          Array.isArray(persistedState)
+        ) {
+          return defaultSettings;
+        }
+        const state = { ...defaultSettings, ...persistedState };
+        if (version < 2) {
+          // DeepSeek legacy model names sunset 2026-07-24; remap persisted values
+          const legacyModelMap: Record<string, string> = {
+            "deepseek-chat": "deepseek-v4-flash",
+            "deepseek-reasoner": "deepseek-v4-pro",
+          };
+          const persisted = state.selectedModels?.deepseek;
+          if (persisted && legacyModelMap[persisted]) {
+            state.selectedModels = {
+              ...state.selectedModels,
+              deepseek: legacyModelMap[persisted],
+            };
+          }
+        }
+        return state;
+      },
     },
   ),
 );

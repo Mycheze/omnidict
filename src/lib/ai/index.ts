@@ -1,5 +1,6 @@
 import {
   DictionaryEntry,
+  ImageStyle,
   LemmaRequest,
   LemmaResponse,
   ContextualEntryGenerationRequest,
@@ -162,6 +163,18 @@ class AIManager {
     displayName: string;
   }> {
     return this.provider.validateLanguage(languageName);
+  }
+
+  /**
+   * Write an image-generation prompt for a word's meaning
+   */
+  public async generateImagePrompt(params: {
+    headword: string;
+    definition: string;
+    exampleSentence?: string;
+    style: ImageStyle;
+  }): Promise<string | null> {
+    return this.provider.generateImagePrompt(params);
   }
 
   /**

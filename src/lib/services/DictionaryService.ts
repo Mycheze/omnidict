@@ -615,15 +615,23 @@ export class DictionaryService {
   /**
    * Perform database maintenance
    */
-  public async performMaintenance(): Promise<{
+  public async performMaintenance(options?: {
+    flushLemmaCache?: boolean;
+  }): Promise<{
     success: boolean;
     error?: string;
   }> {
     try {
       await this.db.runMaintenance();
 
-      // Also clear expired cache entries
-      await this.db.clearExpiredLemmaCache();
+      if (options?.flushLemmaCache) {
+        // Full flush for model changeovers: cached lemmas from the old model
+        // would otherwise be served until they expire
+        await this.db.clearLemmaCache();
+      } else {
+        // Also clear expired cache entries
+        await this.db.clearExpiredLemmaCache();
+      }
 
       return {
         success: true,

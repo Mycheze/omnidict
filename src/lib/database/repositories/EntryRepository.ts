@@ -98,11 +98,9 @@ export class EntryRepository {
 
       const statements = this.getStatements();
 
-      // Wrap multi-table insert in a transaction for atomicity.
-      // For local SQLite this provides a real transaction; for Turso HTTP
-      // mode these are best-effort sequential statements.
-      await db.exec("BEGIN");
-      try {
+      // Wrap multi-table insert in a real transaction (interactive libSQL
+      // transaction on Turso, BEGIN/COMMIT on local SQLite)
+      return await db.transaction(async () => {
         const partOfSpeech = Array.isArray(entry.part_of_speech)
           ? JSON.stringify(entry.part_of_speech)
           : entry.part_of_speech;
@@ -154,12 +152,8 @@ export class EntryRepository {
           }
         }
 
-        await db.exec("COMMIT");
         return entryId;
-      } catch (error) {
-        await db.exec("ROLLBACK");
-        throw error;
-      }
+      });
     } catch (error) {
       console.error("Error adding entry:", error);
       return null;
@@ -226,8 +220,7 @@ export class EntryRepository {
     try {
       const db = this.core.getDatabase();
 
-      await db.exec("BEGIN");
-      try {
+      return await db.transaction(async () => {
         const partOfSpeech = Array.isArray(entry.part_of_speech)
           ? JSON.stringify(entry.part_of_speech)
           : entry.part_of_speech;
@@ -299,13 +292,8 @@ export class EntryRepository {
           }
         }
 
-        await db.exec("COMMIT");
         return true;
-      } catch (error) {
-        await db.exec("ROLLBACK");
-        console.error("Error in update transaction:", error);
-        return false;
-      }
+      });
     } catch (error) {
       console.error("Error updating entry:", error);
       return false;
