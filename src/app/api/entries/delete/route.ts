@@ -1,44 +1,55 @@
-import { NextRequest, NextResponse } from 'next/server';
-import DatabaseManager from '@/lib/database';
-import { ApiResponse } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, STRICT_SECURITY } from "@/lib/security/middleware";
+import { WordSchema, LanguageSchema } from "@/lib/security/validation";
+import { DictionaryService } from "@/lib/services/DictionaryService";
+import { ApiResponse } from "@/lib/types";
+import { z } from "zod";
 
-export async function DELETE(request: NextRequest) {
+const DeleteRequestSchema = z.object({
+  headword: WordSchema,
+  sourceLanguage: LanguageSchema,
+  targetLanguage: LanguageSchema,
+});
+
+async function deleteEntryHandler(request: NextRequest) {
+  const rawBody = await request.json();
+  const { headword, sourceLanguage, targetLanguage } =
+    DeleteRequestSchema.parse(rawBody);
+
+  const dictionaryService = DictionaryService.getInstance();
+
   try {
-    const { headword, sourceLanguage, targetLanguage } = await request.json();
+    const result = await dictionaryService.deleteEntry(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+    );
 
-    if (!headword) {
+    if (!result.success) {
       const response: ApiResponse = {
         success: false,
-        error: 'Headword is required',
-      };
-      return NextResponse.json(response, { status: 400 });
-    }
-
-    const db = DatabaseManager.getInstance();
-    const deleted = await db.deleteEntry(headword, sourceLanguage, targetLanguage);
-
-    if (!deleted) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Entry not found or failed to delete',
+        error: result.error || "Entry not found or failed to delete",
       };
       return NextResponse.json(response, { status: 404 });
     }
 
     const response: ApiResponse = {
       success: true,
-      message: 'Entry deleted successfully',
+      message: "Entry deleted successfully",
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in entries delete API:', error);
-    
+    console.error("Error in deleteEntryHandler:", error);
+
     const response: ApiResponse = {
       success: false,
-      error: 'Failed to delete entry',
+      error: "Internal server error",
     };
 
     return NextResponse.json(response, { status: 500 });
   }
 }
+
+// Export the secured handler
+export const DELETE = withSecurity(deleteEntryHandler, STRICT_SECURITY);

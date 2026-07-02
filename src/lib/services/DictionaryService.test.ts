@@ -11,6 +11,7 @@ vi.mock("@/lib/database", () => {
     getEntryByHeadword: vi.fn(),
     addEntry: vi.fn(),
     deleteEntry: vi.fn(),
+    replaceEntry: vi.fn(),
     searchEntries: vi.fn(),
     getSearchSuggestions: vi.fn(),
     getEntriesForLanguages: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock("@/lib/ai", () => {
       ...mockAi,
       getInstance: () => mockAi,
       configure: mockAi.configure,
+      createProviderInstance: vi.fn(() => mockAi),
     },
   };
 });
@@ -240,25 +242,24 @@ describe("DictionaryService", () => {
   });
 
   describe("regenerateEntry", () => {
-    it("follows delete → regenerate → save flow", async () => {
+    it("follows generate → replace flow", async () => {
       const existingEntry = makeSampleEntry();
       const newEntry = makeSampleEntry({ part_of_speech: "verb" });
 
       mockDb.getEntryByHeadword.mockResolvedValue(existingEntry);
-      mockDb.deleteEntry.mockResolvedValue(true);
       mockAi.regenerateEntry.mockResolvedValue(newEntry);
-      mockDb.addEntry.mockResolvedValue(2);
+      mockDb.replaceEntry.mockResolvedValue(true);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(true);
       expect(result.entry!.part_of_speech).toBe("verb");
-      expect(mockDb.deleteEntry).toHaveBeenCalledWith(
+      expect(mockDb.replaceEntry).toHaveBeenCalledWith(
         "hello",
         "English",
         "Czech",
+        newEntry,
       );
-      expect(mockDb.addEntry).toHaveBeenCalledWith(newEntry);
     });
 
     it("returns error if entry does not exist", async () => {
@@ -270,14 +271,15 @@ describe("DictionaryService", () => {
       expect(result.error).toContain("not found");
     });
 
-    it("returns error if delete fails", async () => {
+    it("returns error if replace fails", async () => {
       mockDb.getEntryByHeadword.mockResolvedValue(makeSampleEntry());
-      mockDb.deleteEntry.mockResolvedValue(false);
+      mockAi.regenerateEntry.mockResolvedValue(makeSampleEntry());
+      mockDb.replaceEntry.mockResolvedValue(false);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Failed to delete");
+      expect(result.error).toContain("Failed to save");
     });
 
     it("returns error if AI regeneration fails", async () => {
@@ -291,16 +293,14 @@ describe("DictionaryService", () => {
       expect(result.error).toContain("Failed to regenerate");
     });
 
-    it("returns error if saving regenerated entry fails", async () => {
+    it("returns error if AI regeneration returns null", async () => {
       mockDb.getEntryByHeadword.mockResolvedValue(makeSampleEntry());
-      mockDb.deleteEntry.mockResolvedValue(true);
-      mockAi.regenerateEntry.mockResolvedValue(makeSampleEntry());
-      mockDb.addEntry.mockResolvedValue(null);
+      mockAi.regenerateEntry.mockResolvedValue(null);
 
       const result = await service.regenerateEntry("hello", "English", "Czech");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Failed to save");
+      expect(result.error).toContain("Failed to regenerate");
     });
   });
 
@@ -798,11 +798,30 @@ describe("DictionaryService", () => {
     });
   });
 
-  describe("configureAI", () => {
-    it("calls AIManager.configure with provider settings", () => {
-      service.configureAI("chatgpt", "sk-test", "gpt-4o");
+  describe("per-request AI provider config", () => {
+    it("creates a provider instance when providerConfig is passed to createEntry", async () => {
+      const sampleEntry = makeSampleEntry();
+      (
+        AIManager.createProviderInstance as ReturnType<typeof vi.fn>
+      ).mockReturnValue(AIManager.getInstance());
+      (mockDb.getEntryByHeadword as ReturnType<typeof vi.fn>).mockResolvedValue(
+        null,
+      );
+      (
+        AIManager.getInstance().getLemma as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ lemma: "test", cached: false });
+      (
+        AIManager.getInstance().generateEntry as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(sampleEntry);
+      (mockDb.addEntry as ReturnType<typeof vi.fn>).mockResolvedValue(1);
 
-      expect(AIManager.configure).toHaveBeenCalledWith({
+      await service.createEntry("test", "English", "Czech", undefined, {
+        providerType: "chatgpt",
+        apiKey: "sk-test",
+        model: "gpt-4o",
+      });
+
+      expect(AIManager.createProviderInstance).toHaveBeenCalledWith({
         providerType: "chatgpt",
         apiKey: "sk-test",
         model: "gpt-4o",

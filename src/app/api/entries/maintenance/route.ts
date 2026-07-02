@@ -1,56 +1,50 @@
-import { NextRequest, NextResponse } from 'next/server';
-import DatabaseManager from '@/lib/database';
-import { SearchFilters, ApiResponse, SearchResult } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, STRICT_SECURITY } from "@/lib/security/middleware";
+import { sanitizeError } from "@/lib/security/validation";
+import { DictionaryService } from "@/lib/services/DictionaryService";
+import { ApiResponse } from "@/lib/types";
+import { z } from "zod";
 
-export async function POST(request: NextRequest) {
+const MaintenanceRequestSchema = z.object({
+  flushLemmaCache: z.boolean().optional().default(false),
+});
+
+async function maintenanceHandler(request: NextRequest) {
+  const dictionaryService = DictionaryService.getInstance();
+
   try {
-    let requestBody: { 
-      filters?: SearchFilters; 
-      page?: number; 
-      pageSize?: number; 
-    };
+    const rawBody = await request.json().catch(() => ({}));
+    const { flushLemmaCache } = MaintenanceRequestSchema.parse(rawBody);
 
-    // FIXED: Handle empty request bodies gracefully
-    try {
-      const bodyText = await request.text();
-      if (!bodyText || bodyText.trim() === '') {
-        // Empty body, use defaults
-        requestBody = { filters: {}, page: 1, pageSize: 50 };
-      } else {
-        requestBody = JSON.parse(bodyText);
-      }
-    } catch (jsonError) {
-      console.error('JSON parsing error:', jsonError);
-      // Invalid JSON, use defaults
-      requestBody = { filters: {}, page: 1, pageSize: 50 };
+    const result = await dictionaryService.performMaintenance({
+      flushLemmaCache,
+    });
+
+    if (!result.success) {
+      const response: ApiResponse = {
+        success: false,
+        error: result.error || "Maintenance failed",
+      };
+      return NextResponse.json(response, { status: 500 });
     }
 
-    // Extract with defaults
-    const { 
-      filters = {}, 
-      page = 1, 
-      pageSize = 50 
-    } = requestBody;
-
-    console.log('Search request:', { filters, page, pageSize });
-
-    const db = DatabaseManager.getInstance();
-    const results = await db.searchEntries(filters, page, pageSize);
-
-    const response: ApiResponse<SearchResult> = {
+    const response: ApiResponse = {
       success: true,
-      data: results,
+      message: "Maintenance completed successfully",
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in entries search API:', error);
-    
+    console.error("Error in maintenanceHandler:", error);
+
     const response: ApiResponse = {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to search entries',
+      error: sanitizeError(error),
     };
 
     return NextResponse.json(response, { status: 500 });
   }
 }
+
+// Export the secured handler
+export const POST = withSecurity(maintenanceHandler, STRICT_SECURITY);

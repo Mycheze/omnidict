@@ -1,12 +1,8 @@
-import { DatabaseCore } from './core';
-import { EntryRepository } from './repositories/EntryRepository';
-import { SearchRepository } from './repositories/SearchRepository';
-import { CacheRepository } from './repositories/CacheRepository';
-import { 
-  DictionaryEntry, 
-  SearchFilters,
-  SearchResult 
-} from '@/lib/types';
+import { DatabaseCore } from "./core";
+import { EntryRepository } from "./repositories/EntryRepository";
+import { SearchRepository } from "./repositories/SearchRepository";
+import { CacheRepository } from "./repositories/CacheRepository";
+import { DictionaryEntry, SearchFilters, SearchResult } from "@/lib/types";
 
 /**
  * Main Database Manager with full async support
@@ -20,7 +16,9 @@ class DatabaseManager {
 
   constructor() {
     this.core = DatabaseCore.getInstance();
-    console.log('Database Manager initialized - repositories will be created lazily');
+    console.log(
+      "Database Manager initialized - repositories will be created lazily",
+    );
   }
 
   public static getInstance(): DatabaseManager {
@@ -32,7 +30,7 @@ class DatabaseManager {
 
   private async ensureReady(): Promise<void> {
     await this.core.ensureInitialized();
-    
+
     if (!this.entryRepo) {
       this.entryRepo = new EntryRepository(this.core);
       this.searchRepo = new SearchRepository(this.core);
@@ -50,10 +48,14 @@ class DatabaseManager {
   public async getEntryByHeadword(
     headword: string,
     sourceLanguage?: string,
-    targetLanguage?: string
+    targetLanguage?: string,
   ): Promise<DictionaryEntry | null> {
     await this.ensureReady();
-    return this.entryRepo!.getEntryByHeadword(headword, sourceLanguage, targetLanguage);
+    return this.entryRepo!.getEntryByHeadword(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+    );
   }
 
   public async getEntryById(entryId: number): Promise<DictionaryEntry | null> {
@@ -61,30 +63,59 @@ class DatabaseManager {
     return this.entryRepo!.getEntryById(entryId);
   }
 
-  public async updateEntry(entryId: number, entry: DictionaryEntry): Promise<boolean> {
+  public async updateEntry(
+    entryId: number,
+    entry: DictionaryEntry,
+  ): Promise<boolean> {
     await this.ensureReady();
     return this.entryRepo!.updateEntry(entryId, entry);
+  }
+
+  public async replaceEntry(
+    headword: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+    newEntry: DictionaryEntry,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.entryRepo!.replaceEntry(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+      newEntry,
+    );
   }
 
   public async deleteEntry(
     headword: string,
     sourceLanguage?: string,
-    targetLanguage?: string
+    targetLanguage?: string,
   ): Promise<boolean> {
     await this.ensureReady();
-    return this.entryRepo!.deleteEntry(headword, sourceLanguage, targetLanguage);
+    return this.entryRepo!.deleteEntry(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+    );
   }
 
   public async entryExists(
     headword: string,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
   ): Promise<boolean> {
     await this.ensureReady();
-    return this.entryRepo!.entryExists(headword, sourceLanguage, targetLanguage);
+    return this.entryRepo!.entryExists(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+    );
   }
 
-  public async getEntryCount(sourceLanguage: string, targetLanguage: string): Promise<number> {
+  public async getEntryCount(
+    sourceLanguage: string,
+    targetLanguage: string,
+  ): Promise<number> {
     await this.ensureReady();
     return this.entryRepo!.getEntryCount(sourceLanguage, targetLanguage);
   }
@@ -93,25 +124,34 @@ class DatabaseManager {
     sourceLanguage: string,
     targetLanguage: string,
     page = 1,
-    pageSize = 200
+    pageSize = 200,
   ): Promise<{ entries: DictionaryEntry[]; total: number }> {
     await this.ensureReady();
-    return this.entryRepo!.getEntriesForLanguages(sourceLanguage, targetLanguage, page, pageSize);
+    return this.entryRepo!.getEntriesForLanguages(
+      sourceLanguage,
+      targetLanguage,
+      page,
+      pageSize,
+    );
   }
 
   public async getRecentEntries(
     sourceLanguage: string,
     targetLanguage: string,
-    limit = 10
+    limit = 10,
   ): Promise<DictionaryEntry[]> {
     await this.ensureReady();
-    return this.entryRepo!.getRecentEntries(sourceLanguage, targetLanguage, limit);
+    return this.entryRepo!.getRecentEntries(
+      sourceLanguage,
+      targetLanguage,
+      limit,
+    );
   }
 
-  public async getAllLanguages(): Promise<{ 
-    sourceLanguages: string[]; 
-    targetLanguages: string[]; 
-    definitionLanguages: string[] 
+  public async getAllLanguages(): Promise<{
+    sourceLanguages: string[];
+    targetLanguages: string[];
+    definitionLanguages: string[];
   }> {
     await this.ensureReady();
     return this.entryRepo!.getAllLanguages();
@@ -119,20 +159,28 @@ class DatabaseManager {
 
   // ===== SEARCH OPERATIONS =====
 
-  public async searchEntries(filters: SearchFilters, page = 1, pageSize = 50): Promise<SearchResult> {
+  public async searchEntries(
+    filters: SearchFilters,
+    page = 1,
+    pageSize = 50,
+  ): Promise<SearchResult> {
     await this.ensureReady();
     return this.searchRepo!.searchEntries(filters, page, pageSize);
   }
 
-  public async advancedSearch(filters: {
-    searchTerm?: string;
-    sourceLanguage?: string;
-    targetLanguage?: string;
-    partOfSpeech?: string;
-    hasContext?: boolean;
-    dateFrom?: string;
-    dateTo?: string;
-  }, page = 1, pageSize = 50): Promise<SearchResult> {
+  public async advancedSearch(
+    filters: {
+      searchTerm?: string;
+      sourceLanguage?: string;
+      targetLanguage?: string;
+      partOfSpeech?: string;
+      hasContext?: boolean;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+    page = 1,
+    pageSize = 50,
+  ): Promise<SearchResult> {
     await this.ensureReady();
     return this.searchRepo!.advancedSearch(filters, page, pageSize);
   }
@@ -141,20 +189,30 @@ class DatabaseManager {
     searchTerm: string,
     sourceLanguage?: string,
     targetLanguage?: string,
-    limit = 50
+    limit = 50,
   ): Promise<DictionaryEntry[]> {
     await this.ensureReady();
-    return this.searchRepo!.searchContent(searchTerm, sourceLanguage, targetLanguage, limit);
+    return this.searchRepo!.searchContent(
+      searchTerm,
+      sourceLanguage,
+      targetLanguage,
+      limit,
+    );
   }
 
   public async getSearchSuggestions(
     partialTerm: string,
     sourceLanguage?: string,
     targetLanguage?: string,
-    limit = 10
+    limit = 10,
   ): Promise<string[]> {
     await this.ensureReady();
-    return this.searchRepo!.getSearchSuggestions(partialTerm, sourceLanguage, targetLanguage, limit);
+    return this.searchRepo!.getSearchSuggestions(
+      partialTerm,
+      sourceLanguage,
+      targetLanguage,
+      limit,
+    );
   }
 
   public async getEntriesByPartOfSpeech(
@@ -162,33 +220,52 @@ class DatabaseManager {
     sourceLanguage?: string,
     targetLanguage?: string,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<SearchResult> {
     await this.ensureReady();
-    return this.searchRepo!.getEntriesByPartOfSpeech(partOfSpeech, sourceLanguage, targetLanguage, page, pageSize);
+    return this.searchRepo!.getEntriesByPartOfSpeech(
+      partOfSpeech,
+      sourceLanguage,
+      targetLanguage,
+      page,
+      pageSize,
+    );
   }
 
   public async getContextAwareEntries(
     sourceLanguage?: string,
     targetLanguage?: string,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<SearchResult> {
     await this.ensureReady();
-    return this.searchRepo!.getContextAwareEntries(sourceLanguage, targetLanguage, page, pageSize);
+    return this.searchRepo!.getContextAwareEntries(
+      sourceLanguage,
+      targetLanguage,
+      page,
+      pageSize,
+    );
   }
 
   public async getSimilarEntries(
     headword: string,
     sourceLanguage?: string,
     targetLanguage?: string,
-    limit = 5
+    limit = 5,
   ): Promise<DictionaryEntry[]> {
     await this.ensureReady();
-    return this.searchRepo!.getSimilarEntries(headword, sourceLanguage, targetLanguage, limit);
+    return this.searchRepo!.getSimilarEntries(
+      headword,
+      sourceLanguage,
+      targetLanguage,
+      limit,
+    );
   }
 
-  public async getSearchStats(sourceLanguage?: string, targetLanguage?: string): Promise<{
+  public async getSearchStats(
+    sourceLanguage?: string,
+    targetLanguage?: string,
+  ): Promise<{
     totalEntries: number;
     contextAwareEntries: number;
     partOfSpeechBreakdown: Record<string, number>;
@@ -204,20 +281,29 @@ class DatabaseManager {
       sourceLanguage?: string;
       targetLanguage?: string;
     },
-    pageSize = 50
-  ): Promise<Array<{ page: number; startHeadword: string; endHeadword: string }>> {
+    pageSize = 50,
+  ): Promise<
+    Array<{ page: number; startHeadword: string; endHeadword: string }>
+  > {
     await this.ensureReady();
     return this.searchRepo!.getPaginationIndex(filters, pageSize);
   }
 
   // ===== CACHE OPERATIONS =====
 
-  public async cacheLemma(word: string, lemma: string, targetLanguage: string): Promise<void> {
+  public async cacheLemma(
+    word: string,
+    lemma: string,
+    targetLanguage: string,
+  ): Promise<void> {
     await this.ensureReady();
     return this.cacheRepo!.cacheLemma(word, lemma, targetLanguage);
   }
 
-  public async getCachedLemma(word: string, targetLanguage: string): Promise<string | null> {
+  public async getCachedLemma(
+    word: string,
+    targetLanguage: string,
+  ): Promise<string | null> {
     await this.ensureReady();
     return this.cacheRepo!.getCachedLemma(word, targetLanguage);
   }
@@ -246,20 +332,20 @@ class DatabaseManager {
   public async runMaintenance(): Promise<void> {
     try {
       await this.ensureReady();
-      
+
       await this.core.runMaintenance();
       await this.cacheRepo!.optimizeCache();
-      
-      console.log('Database maintenance completed successfully');
+
+      console.log("Database maintenance completed successfully");
     } catch (error) {
-      console.error('Error during database maintenance:', error);
+      console.error("Error during database maintenance:", error);
     }
   }
 
-  public async getDatabaseStats(): Promise<{ 
-    entryCount: number; 
-    meaningCount: number; 
-    exampleCount: number; 
+  public async getDatabaseStats(): Promise<{
+    entryCount: number;
+    meaningCount: number;
+    exampleCount: number;
     dbSize: string;
     cacheSize: number;
   }> {
@@ -268,9 +354,9 @@ class DatabaseManager {
   }
 
   public async getDatabaseHealthReport(): Promise<{
-    stats: Awaited<ReturnType<DatabaseManager['getDatabaseStats']>>;
-    cacheStats: Awaited<ReturnType<DatabaseManager['getCacheStats']>>;
-    languageBreakdown: Awaited<ReturnType<DatabaseManager['getAllLanguages']>>;
+    stats: Awaited<ReturnType<DatabaseManager["getDatabaseStats"]>>;
+    cacheStats: Awaited<ReturnType<DatabaseManager["getCacheStats"]>>;
+    languageBreakdown: Awaited<ReturnType<DatabaseManager["getAllLanguages"]>>;
     recentActivity: {
       totalEntries: number;
       contextAwareEntries: number;
@@ -279,22 +365,23 @@ class DatabaseManager {
   }> {
     try {
       await this.ensureReady();
-      
-      const [stats, cacheStats, languageBreakdown, recentActivity] = await Promise.all([
-        this.getDatabaseStats(),
-        this.getCacheStats(),
-        this.getAllLanguages(),
-        this.searchRepo!.getSearchStats()
-      ]);
+
+      const [stats, cacheStats, languageBreakdown, recentActivity] =
+        await Promise.all([
+          this.getDatabaseStats(),
+          this.getCacheStats(),
+          this.getAllLanguages(),
+          this.searchRepo!.getSearchStats(),
+        ]);
 
       return {
         stats,
         cacheStats,
         languageBreakdown,
-        recentActivity
+        recentActivity,
       };
     } catch (error) {
-      console.error('Error generating database health report:', error);
+      console.error("Error generating database health report:", error);
       throw error;
     }
   }
@@ -303,11 +390,11 @@ class DatabaseManager {
     try {
       await this.ensureReady();
       const db = this.core.getDatabase();
-      console.log('Vacuuming database...');
-      await db.exec('VACUUM');
-      console.log('Database vacuum completed');
+      console.log("Vacuuming database...");
+      await db.exec("VACUUM");
+      console.log("Database vacuum completed");
     } catch (error) {
-      console.error('Error vacuuming database:', error);
+      console.error("Error vacuuming database:", error);
     }
   }
 
@@ -321,52 +408,57 @@ class DatabaseManager {
     try {
       await this.ensureReady();
       const db = this.core.getDatabase();
-      
+
       const stmt = db.prepare("PRAGMA table_info(entries)");
-      const tableInfo = await stmt.all() as Array<{name: string}>;
-      const hasOrderIndex = tableInfo.some(col => col.name === 'order_index');
-      
+      const tableInfo = (await stmt.all()) as Array<{ name: string }>;
+      const hasOrderIndex = tableInfo.some((col) => col.name === "order_index");
+
       return !hasOrderIndex;
     } catch (error) {
-      console.error('Error checking migration status:', error);
+      console.error("Error checking migration status:", error);
       return false;
     }
   }
 
   public async runMigrations(): Promise<void> {
     await this.ensureReady();
-    console.log('Database migrations handled during initialization');
+    console.log("Database migrations handled during initialization");
   }
 
   public async initializeSampleData(): Promise<void> {
     try {
       await this.ensureReady();
-      const existingCount = await this.getEntryCount('English', 'Czech');
-      
+      const existingCount = await this.getEntryCount("English", "Czech");
+
       if (existingCount > 0) {
-        console.log('Database already has entries, skipping sample data');
+        console.log("Database already has entries, skipping sample data");
         return;
       }
 
-      console.log('Adding sample data to database...');
-      
+      console.log("Adding sample data to database...");
+
       const sampleEntries: DictionaryEntry[] = [
         {
           metadata: {
-            source_language: 'English',
-            target_language: 'Czech',
-            definition_language: 'English',
+            source_language: "English",
+            target_language: "Czech",
+            definition_language: "English",
           },
-          headword: 'hello',
-          part_of_speech: 'interjection',
-          meanings: [{
-            definition: 'A greeting used when meeting someone or answering the phone',
-            grammar: {},
-            examples: [{
-              sentence: 'Ahoj, jak se máš?',
-              translation: 'Hello, how are you?',
-            }]
-          }]
+          headword: "hello",
+          part_of_speech: "interjection",
+          meanings: [
+            {
+              definition:
+                "A greeting used when meeting someone or answering the phone",
+              grammar: {},
+              examples: [
+                {
+                  sentence: "Ahoj, jak se máš?",
+                  translation: "Hello, how are you?",
+                },
+              ],
+            },
+          ],
         },
       ];
 
@@ -376,7 +468,7 @@ class DatabaseManager {
 
       console.log(`Added ${sampleEntries.length} sample entries`);
     } catch (error) {
-      console.error('Error initializing sample data:', error);
+      console.error("Error initializing sample data:", error);
     }
   }
 }

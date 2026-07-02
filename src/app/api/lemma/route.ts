@@ -1,38 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import AIManager from '@/lib/ai';
-import { ApiResponse, LemmaRequest, LemmaResponse } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
+import { WordSchema, LanguageSchema } from "@/lib/security/validation";
+import AIManager from "@/lib/ai";
+import { ApiResponse, LemmaResponse } from "@/lib/types";
+import { z } from "zod";
 
-export async function POST(request: NextRequest) {
-  try {
-    const { word, targetLanguage }: LemmaRequest = await request.json();
+const LemmaRequestSchema = z.object({
+  word: WordSchema,
+  targetLanguage: LanguageSchema,
+});
 
-    if (!word || !targetLanguage) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Word and target language are required',
-      };
-      return NextResponse.json(response, { status: 400 });
-    }
+async function lemmaHandler(request: NextRequest) {
+  const rawBody = await request.json();
+  const { word, targetLanguage } = LemmaRequestSchema.parse(rawBody);
 
-    console.log('Getting lemma for:', word, 'in', targetLanguage);
+  const ai = AIManager.getInstance();
+  const result = await ai.getLemma({ word, targetLanguage });
 
-    const ai = AIManager.getInstance();
-    const result = await ai.getLemma({ word, targetLanguage });
+  const response: ApiResponse<LemmaResponse> = {
+    success: true,
+    data: result,
+  };
 
-    const response: ApiResponse<LemmaResponse> = {
-      success: true,
-      data: result,
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error in lemma API:', error);
-    
-    const response: ApiResponse = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get lemma',
-    };
-
-    return NextResponse.json(response, { status: 500 });
-  }
+  return NextResponse.json(response);
 }
+
+export const POST = withSecurity(lemmaHandler, DEFAULT_SECURITY);

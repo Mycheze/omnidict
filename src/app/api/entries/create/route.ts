@@ -1,59 +1,80 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withSecurity, DEFAULT_SECURITY } from '@/lib/security/middleware';
-import { validateEntryRequest } from '@/lib/security/validation';
-import { DictionaryService } from '@/lib/services/DictionaryService';
-import { ApiResponse, DictionaryEntry } from '@/lib/types';
+import { NextRequest, NextResponse } from "next/server";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
+import { validateEntryRequest } from "@/lib/security/validation";
+import { DictionaryService } from "@/lib/services/DictionaryService";
+import { ApiResponse, DictionaryEntry } from "@/lib/types";
 
 async function createEntryHandler(request: NextRequest) {
   // Validate and sanitize input
   const rawBody = await request.json();
-  const { word, sourceLanguage, targetLanguage, contextSentence, providerType, apiKey, model } = validateEntryRequest(rawBody);
+  const {
+    word,
+    sourceLanguage,
+    targetLanguage,
+    contextSentence,
+    providerType,
+    apiKey,
+    model,
+  } = validateEntryRequest(rawBody);
 
-  console.log('Creating entry for:', word, `(${sourceLanguage} → ${targetLanguage})`, 
-              contextSentence ? 'with context' : 'without context',
-              providerType ? `using ${providerType}/${model}` : '');
+  console.log(
+    "Creating entry for:",
+    word,
+    `(${sourceLanguage} → ${targetLanguage})`,
+    contextSentence ? "with context" : "without context",
+    providerType ? `using ${providerType}` : "",
+  );
 
   const dictionaryService = DictionaryService.getInstance();
-
-  // Configure AI provider if specified
-  if (providerType) {
-    dictionaryService.configureAI(providerType, apiKey, model);
-  }
 
   try {
     const result = await dictionaryService.createEntry(
       word,
       sourceLanguage,
       targetLanguage,
-      contextSentence
+      contextSentence,
+      providerType ? { providerType, apiKey, model } : undefined,
     );
 
     if (!result.success) {
       const response: ApiResponse = {
         success: false,
-        error: result.error || 'Failed to create entry',
+        error: result.error || "Failed to create entry",
       };
       return NextResponse.json(response, { status: 500 });
     }
 
-    console.log('Entry created successfully:', result.entry?.headword, 
-                result.entry?.metadata.has_context ? '(context-aware)' : '(standard)');
+    console.log(
+      "Entry created successfully:",
+      result.entry?.headword,
+      result.entry?.metadata.has_context ? "(context-aware)" : "(standard)",
+    );
+
+    if (!result.entry) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Entry was created but could not be retrieved",
+        },
+        { status: 500 },
+      );
+    }
 
     const response: ApiResponse<DictionaryEntry> = {
       success: true,
-      data: result.entry!,
-      message: result.entry?.metadata.has_context ? 
-        'Context-aware entry created successfully' : 
-        'Entry created successfully',
+      data: result.entry,
+      message: result.entry.metadata.has_context
+        ? "Context-aware entry created successfully"
+        : "Entry created successfully",
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in createEntryHandler:', error);
-    
+    console.error("Error in createEntryHandler:", error);
+
     const response: ApiResponse = {
       success: false,
-      error: 'Internal server error',
+      error: "Internal server error",
     };
 
     return NextResponse.json(response, { status: 500 });

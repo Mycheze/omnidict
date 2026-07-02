@@ -1,5 +1,16 @@
-import { DictionaryEntry, LemmaRequest, LemmaResponse, ContextualEntryGenerationRequest } from '@/lib/types';
-import { createProvider, AIProviderType, ProviderConfig, ModelProvider } from './providers';
+import {
+  DictionaryEntry,
+  ImageStyle,
+  LemmaRequest,
+  LemmaResponse,
+  ContextualEntryGenerationRequest,
+} from "@/lib/types";
+import {
+  createProvider,
+  AIProviderType,
+  ProviderConfig,
+  ModelProvider,
+} from "./providers";
 
 // Simplified interface for entry generation
 interface SimplifiedEntryGenerationRequest {
@@ -29,14 +40,14 @@ class AIManager {
     const finalConfig = config || AIManager.config || {};
 
     // Default to DeepSeek with environment variable
-    const providerType: AIProviderType = finalConfig.providerType || 'deepseek';
-    
-    const providerConfig: ProviderConfig | undefined = 
-      providerType === 'deepseek' && !finalConfig.apiKey
+    const providerType: AIProviderType = finalConfig.providerType || "deepseek";
+
+    const providerConfig: ProviderConfig | undefined =
+      providerType === "deepseek" && !finalConfig.apiKey
         ? undefined // DeepSeek will use env variable
         : {
-            apiKey: finalConfig.apiKey || '',
-            model: finalConfig.model || '',
+            apiKey: finalConfig.apiKey || "",
+            model: finalConfig.model || "",
           };
 
     this.provider = createProvider(providerType, providerConfig);
@@ -61,9 +72,20 @@ class AIManager {
   }
 
   /**
+   * Create a new provider instance without mutating the singleton.
+   * Use this for per-request provider configuration to avoid race conditions.
+   */
+  public static createProviderInstance(config: AIManagerConfig): AIManager {
+    return new AIManager(config);
+  }
+
+  /**
    * Get lemma form of a word
    */
-  public async getLemma({ word, targetLanguage }: LemmaRequest): Promise<LemmaResponse> {
+  public async getLemma({
+    word,
+    targetLanguage,
+  }: LemmaRequest): Promise<LemmaResponse> {
     return this.provider.getLemma({ word, targetLanguage });
   }
 
@@ -75,7 +97,11 @@ class AIManager {
     sourceLanguage,
     targetLanguage,
   }: SimplifiedEntryGenerationRequest): Promise<DictionaryEntry | null> {
-    return this.provider.generateEntry({ word, sourceLanguage, targetLanguage });
+    return this.provider.generateEntry({
+      word,
+      sourceLanguage,
+      targetLanguage,
+    });
   }
 
   /**
@@ -86,7 +112,11 @@ class AIManager {
     sourceLanguage,
     targetLanguage,
   }: SimplifiedEntryGenerationRequest): Promise<DictionaryEntry | null> {
-    return this.provider.regenerateEntry({ word, sourceLanguage, targetLanguage });
+    return this.provider.regenerateEntry({
+      word,
+      sourceLanguage,
+      targetLanguage,
+    });
   }
 
   /**
@@ -101,7 +131,11 @@ class AIManager {
     contextSentence: string;
     targetLanguage: string;
   }): Promise<LemmaResponse> {
-    return this.provider.getLemmaWithContext({ word, contextSentence, targetLanguage });
+    return this.provider.getLemmaWithContext({
+      word,
+      contextSentence,
+      targetLanguage,
+    });
   }
 
   /**
@@ -129,6 +163,18 @@ class AIManager {
     displayName: string;
   }> {
     return this.provider.validateLanguage(languageName);
+  }
+
+  /**
+   * Write an image-generation prompt for a word's meaning
+   */
+  public async generateImagePrompt(params: {
+    headword: string;
+    definition: string;
+    exampleSentence?: string;
+    style: ImageStyle;
+  }): Promise<string | null> {
+    return this.provider.generateImagePrompt(params);
   }
 
   /**

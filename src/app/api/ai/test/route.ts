@@ -1,47 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createProvider, AIProviderType } from '@/lib/ai/providers';
+import { NextRequest, NextResponse } from "next/server";
+import { createProvider } from "@/lib/ai/providers";
+import { isValidProviderType } from "@/lib/ai/providers/metadata";
+import { withSecurity, DEFAULT_SECURITY } from "@/lib/security/middleware";
 
-/**
- * POST /api/ai/test
- * Test AI provider connection
- */
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { providerType, apiKey, model } = body;
+async function testProviderHandler(request: NextRequest) {
+  const body = await request.json();
+  const { providerType, apiKey, model } = body;
 
-    if (!providerType) {
-      return NextResponse.json(
-        { success: false, error: 'Provider type is required' },
-        { status: 400 }
-      );
-    }
+  if (!providerType || !isValidProviderType(providerType)) {
+    return NextResponse.json(
+      { success: false, error: "Invalid or missing provider type" },
+      { status: 400 },
+    );
+  }
 
-    // For DeepSeek, we don't need an API key from the request
-    const config = providerType === 'deepseek'
-      ? { model: model || 'deepseek-chat', apiKey: '' }
+  const validatedProvider = providerType;
+
+  // For DeepSeek, we don't need an API key from the request
+  const config =
+    validatedProvider === "deepseek"
+      ? { model: model || "deepseek-v4-flash", apiKey: "" }
       : { apiKey, model };
 
-    if (!config.apiKey && providerType !== 'deepseek') {
-      return NextResponse.json(
-        { success: false, error: 'API key is required for non-DeepSeek providers' },
-        { status: 400 }
-      );
-    }
-
-    // Create provider and test connection
-    const provider = createProvider(providerType as AIProviderType, config);
-    const result = await provider.testConnection();
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Error testing provider:', error);
+  if (!config.apiKey && validatedProvider !== "deepseek") {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: "API key is required for non-DeepSeek providers",
       },
-      { status: 500 }
+      { status: 400 },
     );
   }
+
+  // Create provider and test connection
+  const provider = createProvider(validatedProvider, config);
+  const result = await provider.testConnection();
+
+  return NextResponse.json(result);
 }
+
+export const POST = withSecurity(testProviderHandler, DEFAULT_SECURITY);

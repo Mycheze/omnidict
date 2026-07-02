@@ -1,5 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PROVIDER_METADATA, AIProviderType } from '@/lib/ai/providers/metadata';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  PROVIDER_METADATA,
+  isValidProviderType,
+} from "@/lib/ai/providers/metadata";
 
 /**
  * GET /api/ai/models?provider=<providerType>
@@ -8,33 +11,26 @@ import { PROVIDER_METADATA, AIProviderType } from '@/lib/ai/providers/metadata';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const provider = searchParams.get('provider') as AIProviderType;
+    const provider = searchParams.get("provider");
 
-    if (!provider) {
+    if (!provider || !isValidProviderType(provider)) {
       return NextResponse.json(
-        { error: 'Provider parameter is required' },
-        { status: 400 }
+        { error: "Invalid or missing provider parameter" },
+        { status: 400 },
       );
     }
 
     const metadata = PROVIDER_METADATA[provider];
-    
-    if (!metadata) {
-      return NextResponse.json(
-        { error: 'Invalid provider type' },
-        { status: 400 }
-      );
-    }
 
     return NextResponse.json({
       provider: metadata.id,
       models: metadata.models,
     });
   } catch (error) {
-    console.error('Error getting models:', error);
+    console.error("Error getting models:", error);
     return NextResponse.json(
-      { error: 'Failed to get models' },
-      { status: 500 }
+      { error: "Failed to get models" },
+      { status: 500 },
     );
   }
 }

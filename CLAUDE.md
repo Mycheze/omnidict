@@ -44,6 +44,7 @@ src/
       entries/              # CRUD: create, delete, get, search, regenerate, maintenance
       languages/            # Language management + validation
       lemma/                # Lemmatization
+      media/                # Media generation (images, TTS audio) + key status
     page.tsx                # Main application page
     layout.tsx              # Root layout
   components/
@@ -66,8 +67,10 @@ src/
       index.ts               # DatabaseManager facade
       repositories/          # EntryRepository, SearchRepository, CacheRepository
     anki/                   # AnkiConnect client
+    media/                  # Media provider clients (Google TTS, ElevenLabs, Replicate) + styles + cache
     security/               # Rate limiting middleware + input validation
     services/DictionaryService.ts  # Business logic layer
+    services/MediaService.ts       # Media generation orchestration
     types.ts                # Shared TypeScript types
   stores/                   # Zustand stores (ai, anki, apiQueue, dictionary, language, settings)
 data/
@@ -105,6 +108,10 @@ Optional:
 - `GOOGLE_GENERATIVE_AI_KEY` - Gemini provider
 - `DATABASE_PATH` - Local SQLite path (default: `./data/dictionary.db`)
 - `USE_LOCAL_DB=true` - Switch to local SQLite instead of Turso
+- `GOOGLE_TTS_API_KEY` - Google Cloud TTS (word audio for Anki cards)
+- `ELEVENLABS_API_KEY` - ElevenLabs fallback key (users normally supply their own in Settings → Media Generation)
+- `REPLICATE_API_TOKEN` - Replicate fallback key (users normally supply their own in Settings → Media Generation)
+- `MEDIA_CACHE_DIR` - Generated media cache (default: `./data/media`)
 
 ## Database Schema
 

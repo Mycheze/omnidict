@@ -67,3 +67,8 @@ sso-integration-guide.md
 PROJECT-KNOWLEDGE-README.md
 ui_layout_format.md
 .claude/
+
+# Generated media cache + SQLite WAL artifacts
+data/media/
+*.db-shm
+*.db-wal
