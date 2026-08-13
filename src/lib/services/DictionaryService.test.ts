@@ -97,6 +97,7 @@ describe("DictionaryService", () => {
       expect(mockAi.getLemma).toHaveBeenCalledWith({
         word: "hello",
         targetLanguage: "Czech",
+        sourceLanguage: "English",
       });
       expect(mockDb.addEntry).toHaveBeenCalledWith(generatedEntry);
     });
@@ -137,6 +138,7 @@ describe("DictionaryService", () => {
         word: "running",
         contextSentence: "I was running fast",
         targetLanguage: "Czech",
+        sourceLanguage: "English",
       });
       expect(mockAi.generateContextualEntry).toHaveBeenCalled();
     });
@@ -461,67 +463,6 @@ describe("DictionaryService", () => {
     });
   });
 
-  describe("getLemma", () => {
-    it("returns lemma result", async () => {
-      const lemmaResult = { lemma: "run", cached: false };
-      mockAi.getLemma.mockResolvedValue(lemmaResult);
-
-      const result = await service.getLemma({
-        word: "running",
-        targetLanguage: "Czech",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.result).toBe(lemmaResult);
-    });
-
-    it("handles thrown errors", async () => {
-      mockAi.getLemma.mockRejectedValue(new Error("AI error"));
-
-      const result = await service.getLemma({
-        word: "running",
-        targetLanguage: "Czech",
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("AI error");
-    });
-  });
-
-  describe("getContextualLemma", () => {
-    it("returns contextual lemma result", async () => {
-      const lemmaResult = { lemma: "run", cached: false };
-      mockAi.getLemmaWithContext.mockResolvedValue(lemmaResult);
-
-      const result = await service.getContextualLemma(
-        "running",
-        "I was running fast",
-        "Czech",
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.result).toBe(lemmaResult);
-      expect(mockAi.getLemmaWithContext).toHaveBeenCalledWith({
-        word: "running",
-        contextSentence: "I was running fast",
-        targetLanguage: "Czech",
-      });
-    });
-
-    it("handles thrown errors", async () => {
-      mockAi.getLemmaWithContext.mockRejectedValue(new Error("AI error"));
-
-      const result = await service.getContextualLemma(
-        "running",
-        "context",
-        "Czech",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("AI error");
-    });
-  });
-
   describe("getAllLanguages", () => {
     it("returns all languages", async () => {
       const languages = {
@@ -544,41 +485,6 @@ describe("DictionaryService", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("DB error");
-    });
-  });
-
-  describe("getDictionaryStats", () => {
-    it("returns combined stats", async () => {
-      const searchStats = { totalSearches: 10 };
-      const cacheStats = { totalCached: 5 };
-      const languages = {
-        sourceLanguages: ["English"],
-        targetLanguages: ["Czech"],
-        definitionLanguages: ["English"],
-      };
-      const overview = { totalEntries: 100 };
-
-      mockDb.getSearchStats.mockResolvedValue(searchStats);
-      mockDb.getCacheStats.mockResolvedValue(cacheStats);
-      mockDb.getAllLanguages.mockResolvedValue(languages);
-      mockDb.getDatabaseStats.mockReturnValue(overview);
-
-      const result = await service.getDictionaryStats("English", "Czech");
-
-      expect(result.success).toBe(true);
-      expect(result.stats!.overview).toBe(overview);
-      expect(result.stats!.searchStats).toBe(searchStats);
-      expect(result.stats!.cacheStats).toBe(cacheStats);
-      expect(result.stats!.languages).toBe(languages);
-    });
-
-    it("handles thrown errors", async () => {
-      mockDb.getSearchStats.mockRejectedValue(new Error("Stats error"));
-
-      const result = await service.getDictionaryStats();
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Stats error");
     });
   });
 

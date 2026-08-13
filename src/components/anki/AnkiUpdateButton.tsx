@@ -16,7 +16,7 @@ export function AnkiUpdateButton({
   context,
   className,
 }: AnkiUpdateButtonProps) {
-  const { enabled, connected, deck, noteType, fieldMappings } = useAnkiStore();
+  const { enabled, reachable, deck, noteType, fieldMappings } = useAnkiStore();
   const { updateLastAnkiCard } = useAnkiExport();
   const [updateStatus, setUpdateStatus] = useState<
     "idle" | "pending" | "success" | "error"
@@ -24,7 +24,7 @@ export function AnkiUpdateButton({
 
   const isConfigured =
     enabled &&
-    connected &&
+    reachable &&
     deck &&
     noteType &&
     fieldMappings.some((m) => m.deepDictField !== "none");

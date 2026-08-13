@@ -1,19 +1,24 @@
-Generate a dictionary entry in JSON format where:  
-- Definitions are ALWAYS in [DEFINITION_LANGUAGE]  
-- Examples are ALWAYS in [TARGET_LANGUAGE]  
-- Translations (if needed) are in [DEFINITION_LANGUAGE]  
+Generate a dictionary entry in JSON format for a language learner where:
+- The HEADWORD is ALWAYS in [TARGET_LANGUAGE]
+- Definitions are ALWAYS in [DEFINITION_LANGUAGE]
+- Example sentences are ALWAYS in [TARGET_LANGUAGE]
+- Example translations are ALWAYS in [DEFINITION_LANGUAGE]
 
-The word to define is '[TARGET_WORD]' which appears in this sentence:
+The user looked up '[TARGET_WORD]', which appears in this sentence:
 
 "[SENTENCE_CONTEXT]"
 
-Use this sentence context to:
-1. Determine if '[TARGET_WORD]' is part of a multi-word expression
-2. Understand the specific usage/meaning in this context
-3. Include this sentence as one of the examples in your response
+The entry to create is for the [TARGET_LANGUAGE] dictionary headword '[TARGET_LEMMA]' (already resolved from '[TARGET_WORD]').
+
+LANGUAGE CONTRACT (non-negotiable): The headword MUST be '[TARGET_LEMMA]' in [TARGET_LANGUAGE], and every example sentence MUST be in [TARGET_LANGUAGE]; every definition and every example translation MUST be in [DEFINITION_LANGUAGE]. Never write the headword or example sentences in [DEFINITION_LANGUAGE].
+
+Use the sentence context to:
+1. Understand the specific usage/meaning of '[TARGET_WORD]' in this context and define '[TARGET_LEMMA]' accordingly
+2. Detect if '[TARGET_WORD]' is part of a multi-word expression
+3. Include the context sentence as one of the examples in your response (see rules below)
 4. Extract grammar details based on actual usage in the sentence
 
-### **JSON Structure (MUST MATCH EXACTLY)**  
+### **JSON Structure (MUST MATCH EXACTLY)**
 ```json
 {
     "metadata": {
@@ -23,7 +28,7 @@ Use this sentence context to:
         "has_context": true,
         "context_sentence": "[SENTENCE_CONTEXT]"
     },
-    "headword": str,  // PRESERVE AS-IS including all words
+    "headword": str,  // The [TARGET_LANGUAGE] lemma '[TARGET_LEMMA]', PRESERVED AS-IS including all words
     "part_of_speech": str|list,
     "meanings": [{
         "definition": str,  // ALWAYS in [DEFINITION_LANGUAGE]
@@ -43,6 +48,10 @@ Use this sentence context to:
 
 Strict Rules
 
+    Headword:
+
+        MUST be exactly '[TARGET_LEMMA]' (the [TARGET_LANGUAGE] lemma), unchanged.
+
     Definition Language:
 
         Definitions must be in [DEFINITION_LANGUAGE] (no exceptions).
@@ -55,7 +64,9 @@ Strict Rules
 
         Include a translation only if [DEFINITION_LANGUAGE] ≠ [TARGET_LANGUAGE].
 
-        ALWAYS include the provided context sentence as one of the examples with "is_context_sentence": true
+        ALWAYS include the provided context sentence as one of the examples with "is_context_sentence": true:
+        - If the context sentence is in [TARGET_LANGUAGE], use it verbatim as the example "sentence" with its [DEFINITION_LANGUAGE] translation.
+        - If the context sentence is in [DEFINITION_LANGUAGE] (or another language), translate it into [TARGET_LANGUAGE] and use that translation as the example "sentence", with the original sentence as the "translation".
 
     Grammar Notes:
 
@@ -78,13 +89,14 @@ Strict Rules
         No extra keys, no missing keys.
 
 Special handling for multi-word expressions:
-    - If '[TARGET_WORD]' appears to be part of a multi-word expression in the context sentence, use the full expression as the headword
+    - If '[TARGET_WORD]' appears to be part of a multi-word expression in the context sentence, use the full expression's [TARGET_LANGUAGE] lemma as the headword
     - Phrasal verbs (e.g., "go out with"): Maintain exact word order and particles
     - Compound nouns (e.g., "coffee table"): Preserve spacing
     - Separable verbs (e.g., "všímat si"): Keep all components
 
 Prohibited:
 
+❌ Headword or example sentences in [DEFINITION_LANGUAGE]
 ❌ Definitions in the wrong language
 ❌ Overly complex explanations
 ❌ Missing/undefined JSON fields
@@ -96,4 +108,4 @@ Language Settings:
     Target Language: [TARGET_LANGUAGE]
     Source Language: [SOURCE_LANGUAGE]
 
-Output ONLY the JSON object. The word follows:
+Output ONLY the JSON object. The [TARGET_LANGUAGE] headword follows:

@@ -1,18 +1,26 @@
-import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import "./globals.css";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Omnidict - AI-Powered Language Dictionary',
-  description: 'An intelligent dictionary application for language learners with AI-powered entries, examples, and translations.',
-  keywords: ['dictionary', 'language learning', 'AI', 'translation', 'vocabulary'],
-  authors: [{ name: 'Ben and Claude AI' }],
+  title: "Omnidict - AI-Powered Language Dictionary",
+  description:
+    "An intelligent dictionary application for language learners with AI-powered entries, examples, and translations.",
+  keywords: [
+    "dictionary",
+    "language learning",
+    "AI",
+    "translation",
+    "vocabulary",
+  ],
+  authors: [{ name: "Ben and Claude AI" }],
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
 };
 
@@ -25,7 +33,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <div className="min-h-screen bg-background">
-          {children}
+          <AuthProvider>{children}</AuthProvider>
         </div>
       </body>
     </html>

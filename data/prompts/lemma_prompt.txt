@@ -1,20 +1,32 @@
-You are performing lemmatization: finding the dictionary headword (citation form) that '[TARGET_WORD]' would be listed under in a [TARGET_LANGUAGE] dictionary.
+You are resolving the word or phrase '[TARGET_WORD]' to the [TARGET_LANGUAGE] dictionary headword (lemma) it should be studied under.
 
-Lemmatization reduces inflected or variant forms to their base dictionary form - the form you would look up to find the word's definition.
+Language settings:
+- BASE LANGUAGE (the learner's own language): [SOURCE_LANGUAGE]
+- TARGET LANGUAGE (the language being learned): [TARGET_LANGUAGE]
 
-Examples of lemmatization across languages:
-• English: "running" → "run", "better" → "good", "mice" → "mouse", "went" → "go"
-• Spanish: "corriendo" → "correr", "casas" → "casa", "mejores" → "bueno"  
-• French: "courant" → "courir", "maisons" → "maison", "meilleures" → "bon"
-• German: "laufend" → "laufen", "Häuser" → "Haus", "bessere" → "gut"
+'[TARGET_WORD]' may be inflected, and it may be written in either language. Apply exactly one of these rules:
+
+1. If '[TARGET_WORD]' is a [TARGET_LANGUAGE] word or phrase: return its [TARGET_LANGUAGE] lemma — the base citation form it would be listed under in a [TARGET_LANGUAGE] dictionary. If it is already in base form, return it unchanged.
+2. If '[TARGET_WORD]' is a [SOURCE_LANGUAGE] word or phrase (or any language other than [TARGET_LANGUAGE]): translate it to its most common [TARGET_LANGUAGE] equivalent and return that equivalent as a lemma.
+3. If the word is ambiguous between the two languages, prefer the [TARGET_LANGUAGE] reading.
+
+The output MUST always be in [TARGET_LANGUAGE]. NEVER return a [SOURCE_LANGUAGE] word.
+
+Examples of lemmatization (inflected form → lemma, same language):
+• English: "running" → "run", "mice" → "mouse", "went" → "go"
+• Spanish: "corriendo" → "correr", "casas" → "casa"
+• French: "courant" → "courir", "maisons" → "maison"
+• German: "laufend" → "laufen", "Häuser" → "Haus"
 • Czech: "běžící" → "běžet", "domy" → "dům", "lepší" → "dobrý"
-• Russian: "бегущий" → "бежать", "дома" → "дом", "лучше" → "хороший"
+• Russian: "бегущий" → "бежать", "дома" → "дом"
 
-For '[TARGET_WORD]':
-- Find the base form that would appear as the main dictionary entry
-- If it's already in base form, return it unchanged
-- If it's inflected (plural, conjugated, declined, etc.), return the citation form
-- For multi-word expressions, lemmatize as a complete unit
-- Preserve the original language - do not translate
+Examples of translation to the target-language lemma (base-language input):
+• Base English, target Czech: "butterfly" → "motýl", "to run" → "běžet", "dogs" → "pes"
+• Base English, target German: "houses" → "Haus", "running" → "laufen"
+• Base Czech, target English: "motýl" → "butterfly", "běžel" → "run"
+
+Additional rules:
+- For multi-word expressions, treat the complete unit as one lemma (idioms, phrasal verbs, compounds).
+- Reduce inflected forms (plural, conjugated, declined) to the citation form.
 
 Return ONLY the [TARGET_LANGUAGE] lemma with no additional text, explanations, or punctuation.

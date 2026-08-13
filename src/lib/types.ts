@@ -28,6 +28,47 @@ export interface DatabaseExample {
   is_context_sentence?: number;
 }
 
+// User / account rows (DB shape)
+export interface UserRow {
+  refold_user_id: number;
+  email: string;
+  name: string | null;
+  tier: string;
+  paid: number; // SQLite boolean: 0 | 1
+  entitlements_checked_at: string | null;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface MediaUsageRow {
+  refold_user_id: number;
+  period: string;
+  images_used: number;
+  tts_used: number;
+  updated_at: string;
+}
+
+// Pending Anki card queue (DB shape)
+export type PendingCardStatus = "queued" | "flushing" | "done" | "error";
+
+export interface PendingAnkiCardRow {
+  id: number;
+  refold_user_id: number;
+  dedup_key: string;
+  schema_version: number;
+  context_json: string;
+  status: PendingCardStatus;
+  media_values_json: string | null;
+  anki_note_id: number | null;
+  error: string | null;
+  attempts: number;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  flushed_at: string | null;
+}
+
 // Application Types - Updated for Context Support
 export interface DictionaryEntry {
   metadata: {
@@ -117,6 +158,8 @@ export interface LanguageSettings {
 export interface LemmaRequest {
   word: string;
   targetLanguage: string;
+  /** Base/definition language of the learner. Defaults to English. */
+  sourceLanguage?: string;
 }
 
 export interface LemmaResponse {
@@ -188,14 +231,14 @@ export interface AnkiFieldMapping {
   staticValue?: string; // For hardcoded values like tags
 }
 
+/** Persisted user settings for the Anki integration (runtime connection
+ * state lives in the anki store, unpersisted) */
 export interface AnkiSettings {
   enabled: boolean;
-  connected: boolean;
   deck: string;
   noteType: string;
   fieldMappings: AnkiFieldMapping[];
   tags: string[];
-  ankiConnectUrl: string;
 }
 
 export interface AnkiConnectionStatus {

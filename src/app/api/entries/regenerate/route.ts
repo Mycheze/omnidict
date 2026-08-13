@@ -29,13 +29,6 @@ async function regenerateEntryHandler(request: NextRequest) {
     model,
   } = RegenerateRequestSchema.parse(rawBody);
 
-  console.log(
-    "Regenerating entry for:",
-    headword,
-    `(${sourceLanguage} → ${targetLanguage})`,
-    providerType ? `using ${providerType}` : "",
-  );
-
   const dictionaryService = DictionaryService.getInstance();
 
   try {
@@ -54,8 +47,6 @@ async function regenerateEntryHandler(request: NextRequest) {
       const status = result.error === "Entry not found" ? 404 : 500;
       return NextResponse.json(response, { status });
     }
-
-    console.log("Entry regenerated successfully:", result.entry?.headword);
 
     if (!result.entry) {
       return NextResponse.json(

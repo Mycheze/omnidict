@@ -2,7 +2,21 @@ import { DatabaseCore } from "./core";
 import { EntryRepository } from "./repositories/EntryRepository";
 import { SearchRepository } from "./repositories/SearchRepository";
 import { CacheRepository } from "./repositories/CacheRepository";
-import { DictionaryEntry, SearchFilters, SearchResult } from "@/lib/types";
+import {
+  UserRepository,
+  UpsertUserInput,
+  QuotaLimits,
+} from "./repositories/UserRepository";
+import { AnkiQueueRepository } from "./repositories/AnkiQueueRepository";
+import {
+  DictionaryEntry,
+  MediaUsageRow,
+  PendingAnkiCardRow,
+  PendingCardStatus,
+  SearchFilters,
+  SearchResult,
+  UserRow,
+} from "@/lib/types";
 
 /**
  * Main Database Manager with full async support
@@ -12,13 +26,12 @@ class DatabaseManager {
   private entryRepo: EntryRepository | null = null;
   private searchRepo: SearchRepository | null = null;
   private cacheRepo: CacheRepository | null = null;
+  private userRepo: UserRepository | null = null;
+  private ankiQueueRepo: AnkiQueueRepository | null = null;
   private static instance: DatabaseManager;
 
   constructor() {
     this.core = DatabaseCore.getInstance();
-    console.log(
-      "Database Manager initialized - repositories will be created lazily",
-    );
   }
 
   public static getInstance(): DatabaseManager {
@@ -35,6 +48,8 @@ class DatabaseManager {
       this.entryRepo = new EntryRepository(this.core);
       this.searchRepo = new SearchRepository(this.core);
       this.cacheRepo = new CacheRepository(this.core);
+      this.userRepo = new UserRepository(this.core);
+      this.ankiQueueRepo = new AnkiQueueRepository(this.core);
     }
   }
 
@@ -327,6 +342,146 @@ class DatabaseManager {
     return this.cacheRepo!.getCacheStats();
   }
 
+  // ===== USER OPERATIONS =====
+
+  public async upsertUser(input: UpsertUserInput): Promise<void> {
+    await this.ensureReady();
+    return this.userRepo!.upsertUser(input);
+  }
+
+  public async getUser(refoldUserId: number): Promise<UserRow | null> {
+    await this.ensureReady();
+    return this.userRepo!.getUser(refoldUserId);
+  }
+
+  public async updateEntitlements(
+    refoldUserId: number,
+    tier: string,
+    paid: boolean,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.userRepo!.updateEntitlements(refoldUserId, tier, paid);
+  }
+
+  public async getSettings(
+    refoldUserId: number,
+  ): Promise<{ settingsJson: string; updatedAt: string } | null> {
+    await this.ensureReady();
+    return this.userRepo!.getSettings(refoldUserId);
+  }
+
+  public async putSettings(
+    refoldUserId: number,
+    settingsJson: string,
+  ): Promise<void> {
+    await this.ensureReady();
+    return this.userRepo!.putSettings(refoldUserId, settingsJson);
+  }
+
+  public async getUsage(
+    refoldUserId: number,
+    period: string,
+  ): Promise<MediaUsageRow | null> {
+    await this.ensureReady();
+    return this.userRepo!.getUsage(refoldUserId, period);
+  }
+
+  public async tryConsumeQuota(
+    refoldUserId: number,
+    period: string,
+    images: number,
+    tts: number,
+    limits: QuotaLimits,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.userRepo!.tryConsumeQuota(
+      refoldUserId,
+      period,
+      images,
+      tts,
+      limits,
+    );
+  }
+
+  public async refundQuota(
+    refoldUserId: number,
+    period: string,
+    images: number,
+    tts: number,
+  ): Promise<void> {
+    await this.ensureReady();
+    return this.userRepo!.refundQuota(refoldUserId, period, images, tts);
+  }
+
+  // ===== ANKI QUEUE OPERATIONS =====
+
+  public async enqueuePendingCard(
+    refoldUserId: number,
+    dedupKey: string,
+    contextJson: string,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.enqueue(refoldUserId, dedupKey, contextJson);
+  }
+
+  public async enqueuePendingCards(
+    refoldUserId: number,
+    cards: Array<{ dedupKey: string; contextJson: string }>,
+  ): Promise<number> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.enqueueMany(refoldUserId, cards);
+  }
+
+  public async listPendingCardsByUser(
+    refoldUserId: number,
+    statuses: PendingCardStatus[],
+  ): Promise<PendingAnkiCardRow[]> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.listByUser(refoldUserId, statuses);
+  }
+
+  public async claimPendingCard(
+    id: number,
+    sessionId: string,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.claim(id, sessionId);
+  }
+
+  public async savePendingCardMediaValues(
+    id: number,
+    json: string,
+  ): Promise<void> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.saveMediaValues(id, json);
+  }
+
+  public async markPendingCardDone(
+    id: number,
+    ankiNoteId: number | null,
+  ): Promise<void> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.markDone(id, ankiNoteId);
+  }
+
+  public async markPendingCardError(id: number, error: string): Promise<void> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.markError(id, error);
+  }
+
+  public async releasePendingCard(id: number): Promise<void> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.release(id);
+  }
+
+  public async deletePendingCard(
+    id: number,
+    refoldUserId: number,
+  ): Promise<boolean> {
+    await this.ensureReady();
+    return this.ankiQueueRepo!.deletePending(id, refoldUserId);
+  }
+
   // ===== MAINTENANCE OPERATIONS =====
 
   public async runMaintenance(): Promise<void> {
@@ -336,7 +491,6 @@ class DatabaseManager {
       await this.core.runMaintenance();
       await this.cacheRepo!.optimizeCache();
 
-      console.log("Database maintenance completed successfully");
     } catch (error) {
       console.error("Error during database maintenance:", error);
     }
@@ -390,9 +544,7 @@ class DatabaseManager {
     try {
       await this.ensureReady();
       const db = this.core.getDatabase();
-      console.log("Vacuuming database...");
       await db.exec("VACUUM");
-      console.log("Database vacuum completed");
     } catch (error) {
       console.error("Error vacuuming database:", error);
     }
@@ -422,7 +574,6 @@ class DatabaseManager {
 
   public async runMigrations(): Promise<void> {
     await this.ensureReady();
-    console.log("Database migrations handled during initialization");
   }
 
   public async initializeSampleData(): Promise<void> {
@@ -431,11 +582,8 @@ class DatabaseManager {
       const existingCount = await this.getEntryCount("English", "Czech");
 
       if (existingCount > 0) {
-        console.log("Database already has entries, skipping sample data");
         return;
       }
-
-      console.log("Adding sample data to database...");
 
       const sampleEntries: DictionaryEntry[] = [
         {
@@ -466,7 +614,6 @@ class DatabaseManager {
         await this.addEntry(entry);
       }
 
-      console.log(`Added ${sampleEntries.length} sample entries`);
     } catch (error) {
       console.error("Error initializing sample data:", error);
     }

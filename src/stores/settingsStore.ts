@@ -10,14 +10,7 @@ interface SimplifiedLanguageSettings {
 interface SimplifiedUserSettings {
   languages: SimplifiedLanguageSettings;
   preferences: {
-    autoSave: boolean;
-    showTranslations: boolean;
-    enableClipboardMonitoring: boolean;
     darkMode: boolean;
-  };
-  ai: {
-    provider: "deepseek" | "chatgpt" | "claude" | "gemini";
-    temperature: number;
   };
 }
 
@@ -27,7 +20,6 @@ interface SettingsState extends SimplifiedUserSettings {
   updatePreferences: (
     preferences: Partial<SimplifiedUserSettings["preferences"]>,
   ) => void;
-  updateAI: (ai: Partial<SimplifiedUserSettings["ai"]>) => void;
   resetToDefaults: () => void;
 }
 
@@ -37,14 +29,7 @@ const defaultSettings: SimplifiedUserSettings = {
     targetLanguage: "Czech",
   },
   preferences: {
-    autoSave: true,
-    showTranslations: true,
-    enableClipboardMonitoring: false,
     darkMode: false,
-  },
-  ai: {
-    provider: "deepseek",
-    temperature: 0.7,
   },
 };
 
@@ -65,19 +50,13 @@ export const useSettingsStore = create<SettingsState>()(
         }));
       },
 
-      updateAI: (ai) => {
-        set((state) => ({
-          ai: { ...state.ai, ...ai },
-        }));
-      },
-
       resetToDefaults: () => {
         set(defaultSettings);
       },
     }),
     {
       name: "omnidict-settings",
-      version: 4, // Increment version to force clean migration
+      version: 5, // v5 drops the dead ai block and unused preference flags
 
       // Simple storage that works with SSR
       storage: {
@@ -109,54 +88,42 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       // Migration function to handle version changes
-      migrate: (persistedState: any, version: number) => {
-        // For any version less than 4, reset to defaults
-        if (version < 4) {
-          console.log("Migrating settings store to v4 - resetting to defaults");
+      migrate: (persistedState: unknown, version: number) => {
+        // For any version less than 4, reset to defaults (historical rule)
+        if (
+          version < 4 ||
+          persistedState === null ||
+          typeof persistedState !== "object"
+        ) {
           return defaultSettings;
         }
 
-        // Ensure all required fields exist
-        const migrated = {
-          ...defaultSettings,
-          ...persistedState,
+        // v4 → v5: keep only the fields that survive; drops ai block and
+        // dead preference flags automatically by rebuilding the shape
+        const state = persistedState as {
+          languages?: { sourceLanguage?: unknown; targetLanguage?: unknown };
+          preferences?: { darkMode?: unknown };
         };
 
-        // Validate structure
-        if (!migrated.languages || typeof migrated.languages !== "object") {
-          migrated.languages = defaultSettings.languages;
-        }
-        if (!migrated.preferences || typeof migrated.preferences !== "object") {
-          migrated.preferences = defaultSettings.preferences;
-        }
-        if (!migrated.ai || typeof migrated.ai !== "object") {
-          migrated.ai = defaultSettings.ai;
-        }
-
-        return migrated;
+        return {
+          languages: {
+            sourceLanguage:
+              typeof state.languages?.sourceLanguage === "string"
+                ? state.languages.sourceLanguage
+                : defaultSettings.languages.sourceLanguage,
+            targetLanguage:
+              typeof state.languages?.targetLanguage === "string"
+                ? state.languages.targetLanguage
+                : defaultSettings.languages.targetLanguage,
+          },
+          preferences: {
+            darkMode:
+              typeof state.preferences?.darkMode === "boolean"
+                ? state.preferences.darkMode
+                : defaultSettings.preferences.darkMode,
+          },
+        };
       },
     },
   ),
 );
-
-// Stable selectors that prevent unnecessary re-renders
-export const useLanguages = () => {
-  return useSettingsStore((state) => state.languages);
-};
-
-export const usePreferences = () => {
-  return useSettingsStore((state) => state.preferences);
-};
-
-export const useAISettings = () => {
-  return useSettingsStore((state) => state.ai);
-};
-
-// Stable action selectors — individual selectors to avoid new-object re-renders
-export const useUpdateLanguages = () =>
-  useSettingsStore((state) => state.updateLanguages);
-export const useUpdatePreferences = () =>
-  useSettingsStore((state) => state.updatePreferences);
-export const useUpdateAI = () => useSettingsStore((state) => state.updateAI);
-export const useResetToDefaults = () =>
-  useSettingsStore((state) => state.resetToDefaults);

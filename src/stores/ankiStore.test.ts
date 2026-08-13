@@ -5,6 +5,7 @@ describe("ankiStore", () => {
   beforeEach(() => {
     useAnkiStore.getState().resetSettings();
     useAnkiStore.setState({
+      reachable: false,
       availableDecks: [],
       availableNoteTypes: [],
       connectionStatus: { connected: false },
@@ -15,18 +16,14 @@ describe("ankiStore", () => {
   });
 
   describe("defaults", () => {
-    it("starts disabled and disconnected", () => {
+    it("starts disabled and unreachable", () => {
       const state = useAnkiStore.getState();
       expect(state.enabled).toBe(false);
-      expect(state.connected).toBe(false);
+      expect(state.reachable).toBe(false);
     });
 
     it("has default tags", () => {
       expect(useAnkiStore.getState().tags).toEqual(["omnidict"]);
-    });
-
-    it("uses proxy URL by default", () => {
-      expect(useAnkiStore.getState().ankiConnectUrl).toBe("/api/anki");
     });
   });
 
@@ -36,9 +33,9 @@ describe("ankiStore", () => {
       expect(useAnkiStore.getState().enabled).toBe(true);
     });
 
-    it("setConnected", () => {
-      useAnkiStore.getState().setConnected(true);
-      expect(useAnkiStore.getState().connected).toBe(true);
+    it("setReachable", () => {
+      useAnkiStore.getState().setReachable(true);
+      expect(useAnkiStore.getState().reachable).toBe(true);
     });
 
     it("setDeck", () => {
@@ -131,9 +128,8 @@ describe("ankiStore", () => {
   });
 
   describe("resetSettings", () => {
-    it("resets to defaults", () => {
+    it("resets user settings to defaults", () => {
       useAnkiStore.getState().setEnabled(true);
-      useAnkiStore.getState().setConnected(true);
       useAnkiStore.getState().setDeck("MyDeck");
       useAnkiStore.getState().setTags(["custom"]);
 
@@ -141,9 +137,71 @@ describe("ankiStore", () => {
 
       const state = useAnkiStore.getState();
       expect(state.enabled).toBe(false);
-      expect(state.connected).toBe(false);
       expect(state.deck).toBe("");
       expect(state.tags).toEqual(["omnidict"]);
+    });
+  });
+
+  describe("persistence", () => {
+    it("persists only user settings (partialize)", () => {
+      const { partialize } = useAnkiStore.persist.getOptions();
+      expect(partialize).toBeDefined();
+
+      const persisted = partialize!(useAnkiStore.getState());
+
+      expect(Object.keys(persisted).sort()).toEqual([
+        "deck",
+        "enabled",
+        "fieldMappings",
+        "noteType",
+        "tags",
+      ]);
+    });
+
+    it("uses persist version 2", () => {
+      expect(useAnkiStore.persist.getOptions().version).toBe(2);
+    });
+
+    it("migrates a v1 blob: keeps settings, drops removed keys", async () => {
+      const { migrate } = useAnkiStore.persist.getOptions();
+      expect(migrate).toBeDefined();
+
+      const v1Blob = {
+        enabled: true,
+        connected: true,
+        deck: "Czech Vocab",
+        noteType: "Basic",
+        fieldMappings: [{ ankiField: "Front", deepDictField: "headword" }],
+        tags: ["omnidict", "czech"],
+        ankiConnectUrl: "/api/anki",
+        availableDecks: [{ name: "Czech Vocab" }],
+        connectionStatus: { connected: true },
+        lastExportTime: 12345,
+      };
+
+      const migrated = await migrate!(v1Blob, 1);
+
+      expect(migrated).toEqual({
+        enabled: true,
+        deck: "Czech Vocab",
+        noteType: "Basic",
+        fieldMappings: [{ ankiField: "Front", deepDictField: "headword" }],
+        tags: ["omnidict", "czech"],
+      });
+    });
+
+    it("migrates a corrupt/empty blob to safe defaults", async () => {
+      const { migrate } = useAnkiStore.persist.getOptions();
+
+      const migrated = await migrate!(null, 1);
+
+      expect(migrated).toEqual({
+        enabled: false,
+        deck: "",
+        noteType: "",
+        fieldMappings: [],
+        tags: ["omnidict"],
+      });
     });
   });
 });

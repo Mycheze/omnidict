@@ -1,15 +1,13 @@
-Generate a dictionary entry in JSON format for BIDIRECTIONAL language learning where:  
-- Definitions are ALWAYS in [DEFINITION_LANGUAGE]  
-- Examples are ALWAYS in [TARGET_LANGUAGE]  
-- Translations (if needed) are in [DEFINITION_LANGUAGE]  
+Generate a dictionary entry in JSON format for a language learner where:
+- The HEADWORD is ALWAYS in [TARGET_LANGUAGE]
+- Definitions are ALWAYS in [DEFINITION_LANGUAGE]
+- Example sentences are ALWAYS in [TARGET_LANGUAGE]
+- Example translations are ALWAYS in [DEFINITION_LANGUAGE]
 - Multi-word expressions are preserved exactly as provided
 
-IMPORTANT: This is a bidirectional dictionary. The word being defined could be in [SOURCE_LANGUAGE] OR [TARGET_LANGUAGE]. Handle both cases intelligently:
-- If the word is in [SOURCE_LANGUAGE], define it and provide [TARGET_LANGUAGE] examples
-- If the word is in [TARGET_LANGUAGE], define it and provide [TARGET_LANGUAGE] examples
-- Always make definitions in [DEFINITION_LANGUAGE] regardless of which language the word comes from
+LANGUAGE CONTRACT (non-negotiable): The word you will be given is a [TARGET_LANGUAGE] dictionary lemma. The headword and every example sentence MUST be in [TARGET_LANGUAGE]; every definition and every example translation MUST be in [DEFINITION_LANGUAGE]. Never write the headword or example sentences in [DEFINITION_LANGUAGE].
 
-### **JSON Structure (MUST MATCH EXACTLY)**  
+### **JSON Structure (MUST MATCH EXACTLY)**
 ```json
 {
     "metadata": {
@@ -17,7 +15,7 @@ IMPORTANT: This is a bidirectional dictionary. The word being defined could be i
         "target_language": "[TARGET_LANGUAGE]",
         "definition_language": "[DEFINITION_LANGUAGE]"
     },
-    "headword": str,  // PRESERVE AS-IS including all words and diacritics
+    "headword": str,  // The [TARGET_LANGUAGE] lemma, PRESERVED AS-IS including all words and diacritics
     "part_of_speech": str|list,  // REQUIRED: noun, verb, adjective, etc.
     "meanings": [{
         "definition": str,  // ALWAYS in [DEFINITION_LANGUAGE]
@@ -35,6 +33,9 @@ IMPORTANT: This is a bidirectional dictionary. The word being defined could be i
 ```
 
 ### **Strict Rules**
+
+**Headword:**
+- MUST be the provided [TARGET_LANGUAGE] lemma, unchanged (all words, diacritics, and spacing preserved)
 
 **Definition Language:**
 - Definitions must be in [DEFINITION_LANGUAGE] (no exceptions)
@@ -79,6 +80,7 @@ IMPORTANT: This is a bidirectional dictionary. The word being defined could be i
 - Handle diacritical marks correctly for all languages
 
 ### **Prohibited:**
+❌ Headword or example sentences in [DEFINITION_LANGUAGE]
 ❌ Definitions in the wrong language
 ❌ Missing part_of_speech field
 ❌ Overly complex or academic explanations
@@ -88,10 +90,7 @@ IMPORTANT: This is a bidirectional dictionary. The word being defined could be i
 
 ### **Language Settings:**
 - Definition Language: [DEFINITION_LANGUAGE]
-- Target Language: [TARGET_LANGUAGE]  
+- Target Language: [TARGET_LANGUAGE]
 - Source Language: [SOURCE_LANGUAGE]
 
-### **Bidirectional Processing:**
-Remember that this dictionary works in both directions. Whether the user inputs an English word to learn Czech, or a Czech word to get an English definition, create an entry that serves the language learning purpose effectively.
-
-Output ONLY the JSON object. The word to define follows:
+Output ONLY the JSON object. The [TARGET_LANGUAGE] word to define follows:

@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -72,3 +73,14 @@ ui_layout_format.md
 data/media/
 *.db-shm
 *.db-wal
+
+# Local artifacts that must not be tracked
+errors/
+*.backup
+database_backup.sql
+data/*.sql
+.mcp.json
+tsconfig.tsbuildinfo
+CLAUDEnew.md
+CLAUDEold.md
+sso-integration-guide.md

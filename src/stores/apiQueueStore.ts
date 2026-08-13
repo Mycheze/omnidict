@@ -41,8 +41,6 @@ export const useApiQueueStore = create<ApiQueueState>((set, get) => ({
       startTime: Date.now(),
     };
 
-    console.log('Adding to queue:', queuedRequest);
-
     set((state) => ({
       queue: [...state.queue, queuedRequest],
     }));
@@ -51,7 +49,6 @@ export const useApiQueueStore = create<ApiQueueState>((set, get) => ({
   },
 
   startProcessing: (requestId) => {
-    console.log('Starting processing:', requestId);
     set((state) => {
       const request = state.queue.find(r => r.id === requestId);
       if (!request) return state;
@@ -66,7 +63,6 @@ export const useApiQueueStore = create<ApiQueueState>((set, get) => ({
   },
 
   completeRequest: (requestId, result) => {
-    console.log('Completing request:', requestId, result);
     set((state) => {
       const request = state.activeRequests.find(r => r.id === requestId);
       if (!request) return state;

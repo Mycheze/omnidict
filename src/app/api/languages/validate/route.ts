@@ -18,7 +18,6 @@ async function validateLanguageHandler(request: NextRequest) {
   }
 
   const query = inputLanguage.trim().toLowerCase();
-  console.log('Validating language against static list:', inputLanguage);
 
   try {
     // Find matching language
@@ -35,8 +34,6 @@ async function validateLanguageHandler(request: NextRequest) {
       };
       return NextResponse.json(response, { status: 404 });
     }
-
-    console.log('Language found:', match.name);
 
     const result: LanguageValidationResponse = {
       standardizedName: match.name,

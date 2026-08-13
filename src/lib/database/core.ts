@@ -228,10 +228,9 @@ export class DatabaseCore {
       await this.createTables();
       await this.runMigrations();
 
-      // Only optimize for local development
-      if (this.useLocalDb) {
-        await this.optimizeDatabase();
-      }
+      // Indexes are created in both modes (Turso and local SQLite);
+      // SQLite-only pragmas are handled separately in setPragmas()
+      await this.optimizeDatabase();
     } catch (error) {
       console.error("Failed to initialize database:", error);
       if (this.db) {
@@ -336,9 +335,14 @@ export class DatabaseCore {
         has_context BOOLEAN DEFAULT FALSE,
         context_sentence TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(headword, source_language, target_language, COALESCE(context_sentence, ''))
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`,
+
+      // Expressions are prohibited in table-level UNIQUE constraints in plain
+      // SQLite (the inline form only worked on libSQL), so the composite
+      // uniqueness rule lives in an expression index instead
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_unique_context
+       ON entries(headword, source_language, target_language, COALESCE(context_sentence, ''))`,
 
       `CREATE TABLE IF NOT EXISTS meanings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -371,6 +375,53 @@ export class DatabaseCore {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         expires_at TIMESTAMP,
         UNIQUE(word, target_language)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS users (
+        refold_user_id INTEGER PRIMARY KEY,
+        email TEXT NOT NULL,
+        name TEXT,
+        tier TEXT NOT NULL DEFAULT 'free',
+        paid BOOLEAN NOT NULL DEFAULT FALSE,
+        entitlements_checked_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login_at TIMESTAMP
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS user_settings (
+        refold_user_id INTEGER PRIMARY KEY,
+        settings_json TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(refold_user_id) REFERENCES users(refold_user_id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS media_usage (
+        refold_user_id INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        images_used INTEGER NOT NULL DEFAULT 0,
+        tts_used INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (refold_user_id, period),
+        FOREIGN KEY(refold_user_id) REFERENCES users(refold_user_id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS pending_anki_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        refold_user_id INTEGER NOT NULL,
+        dedup_key TEXT NOT NULL,
+        schema_version INTEGER NOT NULL DEFAULT 1,
+        context_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        media_values_json TEXT,
+        anki_note_id INTEGER,
+        error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        claimed_by TEXT,
+        claimed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        flushed_at TIMESTAMP,
+        UNIQUE(refold_user_id, dedup_key)
       )`,
     ];
 
@@ -446,6 +497,10 @@ export class DatabaseCore {
     "meanings",
     "examples",
     "lemma_cache",
+    "users",
+    "user_settings",
+    "media_usage",
+    "pending_anki_cards",
   ] as const;
 
   private async columnExists(
@@ -476,7 +531,7 @@ export class DatabaseCore {
   }
 
   private async optimizeDatabase(): Promise<void> {
-    if (!this.db || !this.useLocalDb) return;
+    if (!this.db) return;
 
     try {
       const indexes = [
@@ -492,8 +547,11 @@ export class DatabaseCore {
         `CREATE INDEX IF NOT EXISTS idx_entries_context 
          ON entries(has_context, source_language, target_language) WHERE has_context = TRUE`,
 
-        `CREATE INDEX IF NOT EXISTS idx_entries_recent 
+        `CREATE INDEX IF NOT EXISTS idx_entries_recent
          ON entries(source_language, target_language, created_at DESC)`,
+
+        `CREATE INDEX IF NOT EXISTS idx_pending_cards_user_status
+         ON pending_anki_cards(refold_user_id, status, created_at)`,
       ];
 
       // Add order-dependent indexes only if columns exist

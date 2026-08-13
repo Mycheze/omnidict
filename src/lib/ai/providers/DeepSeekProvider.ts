@@ -1,6 +1,7 @@
 import OpenAI from "openai";
-import { ProviderConfig, ProviderTestResult } from "./ModelProvider";
+import { ProviderConfig } from "./ModelProvider";
 import { BaseProvider, ChatMessage } from "./BaseProvider";
+import { PROVIDER_METADATA } from "./metadata";
 
 export class DeepSeekProvider extends BaseProvider {
   private client: OpenAI;
@@ -19,37 +20,7 @@ export class DeepSeekProvider extends BaseProvider {
       baseURL: config?.baseURL || "https://api.deepseek.com",
     });
 
-    this.model = config?.model || "deepseek-v4-flash";
-  }
-
-  async testConnection(): Promise<ProviderTestResult> {
-    try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 10,
-        // @ts-expect-error -- DeepSeek v4 thinking param; the Node SDK passes
-        // unknown body fields through top-level (extra_body is Python-only)
-        thinking: { type: "disabled" },
-      });
-
-      if (response.choices && response.choices.length > 0) {
-        return {
-          success: true,
-          message: "Connection successful",
-        };
-      }
-
-      return {
-        success: false,
-        error: "No response from API",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
+    this.model = config?.model || PROVIDER_METADATA.deepseek.defaultModel;
   }
 
   protected async callApi(

@@ -1,11 +1,21 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Bot, Check, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useAIStore } from '@/stores/aiStore';
-import { PROVIDER_METADATA, AIProviderType, ModelInfo } from '@/lib/ai/providers/metadata';
+import { useState, useEffect } from "react";
+import { Bot, Check, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { useAIStore } from "@/stores/aiStore";
+import {
+  PROVIDER_METADATA,
+  AIProviderType,
+  ModelInfo,
+} from "@/lib/ai/providers/metadata";
 
 export function AIModelSettings() {
   const {
@@ -19,16 +29,20 @@ export function AIModelSettings() {
     setTestResult,
   } = useAIStore();
 
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState("");
 
   const providerMetadata = PROVIDER_METADATA[selectedProvider];
   const requiresApiKey = providerMetadata?.requiresApiKey;
-  const currentApiKey = apiKeys[selectedProvider] || '';
-  const currentModel = selectedModels[selectedProvider] || providerMetadata?.models[0]?.id || '';
+  const currentApiKey = apiKeys[selectedProvider] || "";
+  const availableModels: ModelInfo[] = providerMetadata?.models || [];
+  const storedModel = selectedModels[selectedProvider];
+  // A persisted model the registry no longer knows falls back to the default
+  const currentModel =
+    storedModel && availableModels.some((m) => m.id === storedModel)
+      ? storedModel
+      : providerMetadata?.defaultModel || "";
   const lastTest = lastTestResults[selectedProvider];
 
   // Load API key into input when provider changes
@@ -37,32 +51,12 @@ export function AIModelSettings() {
     setShowApiKey(false);
   }, [selectedProvider, currentApiKey]);
 
-  // Load models when provider changes
+  // Heal the store when the persisted model is absent or stale
   useEffect(() => {
-    loadModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProvider]);
-
-  const loadModels = async () => {
-    setIsLoadingModels(true);
-    try {
-      const response = await fetch(`/api/ai/models?provider=${selectedProvider}`);
-      const data = await response.json();
-      
-      if (data.models) {
-        setAvailableModels(data.models);
-        // Set default model if none selected
-        if (!selectedModels[selectedProvider] && data.models.length > 0) {
-          setSelectedModel(selectedProvider, data.models[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load models:', error);
-      setAvailableModels(providerMetadata?.models || []);
-    } finally {
-      setIsLoadingModels(false);
+    if (currentModel && storedModel !== currentModel) {
+      setSelectedModel(selectedProvider, currentModel);
     }
-  };
+  }, [selectedProvider, storedModel, currentModel, setSelectedModel]);
 
   const handleProviderChange = (provider: AIProviderType) => {
     setSelectedProvider(provider);
@@ -81,9 +75,9 @@ export function AIModelSettings() {
   const handleTest = async () => {
     setIsTesting(true);
     try {
-      const response = await fetch('/api/ai/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           providerType: selectedProvider,
           apiKey: requiresApiKey ? apiKeyInput : undefined,
@@ -99,7 +93,7 @@ export function AIModelSettings() {
     } catch (error) {
       setTestResult(selectedProvider, {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : "Unknown error",
       });
     } finally {
       setIsTesting(false);
@@ -133,8 +127,8 @@ export function AIModelSettings() {
                 onClick={() => handleProviderChange(provider.id)}
                 className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${
                   selectedProvider === provider.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
                 }`}
               >
                 <div className="font-medium">{provider.name}</div>
@@ -160,7 +154,7 @@ export function AIModelSettings() {
               <label className="text-sm font-medium">API Key</label>
               <div className="relative">
                 <input
-                  type={showApiKey ? 'text' : 'password'}
+                  type={showApiKey ? "text" : "password"}
                   value={apiKeyInput}
                   onChange={(e) => handleApiKeyChange(e.target.value)}
                   placeholder={`Enter your ${providerMetadata.name} API key`}
@@ -179,7 +173,9 @@ export function AIModelSettings() {
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Your API key is stored locally and never sent to our servers
+                Your API key is stored only in this browser and is used
+                server-side solely to relay your requests to{" "}
+                {providerMetadata.name} — it is never saved on our servers
               </p>
             </div>
           )}
@@ -190,7 +186,6 @@ export function AIModelSettings() {
             <select
               value={currentModel}
               onChange={(e) => handleModelChange(e.target.value)}
-              disabled={isLoadingModels}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             >
               {availableModels.map((model) => (
@@ -216,7 +211,7 @@ export function AIModelSettings() {
                   Testing...
                 </>
               ) : (
-                'Test Connection'
+                "Test Connection"
               )}
             </Button>
           </div>
@@ -226,8 +221,8 @@ export function AIModelSettings() {
             <div
               className={`p-3 rounded-md flex items-start gap-2 ${
                 lastTest.success
-                  ? 'bg-green-50 text-green-800 border border-green-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                  ? "bg-green-50 text-green-800 border border-green-200"
+                  : "bg-red-50 text-red-800 border border-red-200"
               }`}
             >
               {lastTest.success ? (
@@ -237,7 +232,9 @@ export function AIModelSettings() {
               )}
               <div className="flex-1">
                 <div className="font-medium">
-                  {lastTest.success ? 'Connection successful' : 'Connection failed'}
+                  {lastTest.success
+                    ? "Connection successful"
+                    : "Connection failed"}
                 </div>
                 {lastTest.message && (
                   <div className="text-sm mt-1">{lastTest.message}</div>
@@ -257,10 +254,18 @@ export function AIModelSettings() {
           <div className="text-sm text-blue-800 space-y-2">
             <p className="font-medium">💡 How it works:</p>
             <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>Select an AI provider and configure your API key (except DeepSeek)</li>
+              <li>
+                Select an AI provider and configure your API key (except
+                DeepSeek)
+              </li>
               <li>Choose your preferred model from the dropdown</li>
-              <li>Click &quot;Test Connection&quot; to verify everything works</li>
-              <li>All new dictionary entries will be generated using your selected model</li>
+              <li>
+                Click &quot;Test Connection&quot; to verify everything works
+              </li>
+              <li>
+                All new dictionary entries will be generated using your selected
+                model
+              </li>
             </ul>
           </div>
         </CardContent>

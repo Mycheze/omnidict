@@ -46,39 +46,40 @@ export interface ModelProvider {
   }): Promise<DictionaryEntry | null>;
 
   /**
-   * Get lemma form of a word
+   * Resolve a word (in either the base or target language, possibly
+   * inflected) to its TARGET-language dictionary lemma.
    */
   getLemma(params: {
     word: string;
     targetLanguage: string;
+    /** Base/definition language of the learner. Defaults to English. */
+    sourceLanguage?: string;
   }): Promise<LemmaResponse>;
 
   /**
-   * Get lemma form with context
+   * Resolve a word to its TARGET-language dictionary lemma using sentence
+   * context.
    */
   getLemmaWithContext(params: {
     word: string;
     contextSentence: string;
     targetLanguage: string;
+    /** Base/definition language of the learner. Defaults to English. */
+    sourceLanguage?: string;
   }): Promise<LemmaResponse>;
 
   /**
-   * Generate a context-aware dictionary entry
+   * Generate a context-aware dictionary entry.
+   * Pass `lemma` when the caller already resolved it to avoid a duplicate
+   * lemmatization call.
    */
   generateContextualEntry(params: {
     word: string;
     sourceLanguage: string;
     targetLanguage: string;
     contextSentence: string;
+    lemma?: string;
   }): Promise<DictionaryEntry | null>;
-
-  /**
-   * Validate a language name
-   */
-  validateLanguage(languageName: string): Promise<{
-    standardizedName: string;
-    displayName: string;
-  }>;
 
   /**
    * Write an image-generation prompt for a word's meaning (null = skip render)

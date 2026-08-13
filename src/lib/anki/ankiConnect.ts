@@ -60,7 +60,6 @@ export class AnkiConnect {
           error instanceof AnkiConnectError &&
           error.message.includes("DIRECT_CONNECTION_REQUIRED")
         ) {
-          console.log("Switching to direct AnkiConnect connection");
           this.useDirectConnection = true;
           // Fall through to direct connection attempt
         } else {
@@ -204,6 +203,25 @@ export class AnkiConnect {
   }
 
   /**
+   * Get all note type (model) names, without fetching their fields
+   */
+  async getModelNames(): Promise<string[]> {
+    return await this.makeRequest("modelNames");
+  }
+
+  /**
+   * Create a new note type (model) in Anki
+   */
+  async createModel(model: {
+    modelName: string;
+    inOrderFields: string[];
+    css: string;
+    cardTemplates: { Name: string; Front: string; Back: string }[];
+  }): Promise<void> {
+    await this.makeRequest("createModel", model);
+  }
+
+  /**
    * Get all note type names and their fields
    */
   async getNoteTypes(): Promise<AnkiNoteType[]> {
@@ -334,6 +352,9 @@ export class AnkiConnect {
       (window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1");
 
+    const currentOrigin =
+      typeof window !== "undefined" ? window.location.origin : "your-domain";
+
     const instructions = isLocalhost
       ? [
           "1. Install the AnkiConnect add-on in Anki",
@@ -347,7 +368,7 @@ export class AnkiConnect {
           "3. Make sure Anki is running",
           "4. Configure CORS in AnkiConnect settings:",
           "   - Tools → Add-ons → AnkiConnect → Config",
-          "   - Add this domain to webCorsOriginList: https://omnidict.vercel.app",
+          `   - Add this domain to webCorsOriginList: ${currentOrigin}`,
           "   - Restart Anki",
         ];
 

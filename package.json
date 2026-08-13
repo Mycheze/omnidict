@@ -13,13 +13,11 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "sync": "bash sync-project-knowledge.sh",
-    "sync-knowledge": "bash sync-project-knowledge.sh"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^2.17.0",
     "@hookform/resolvers": "^3.10.0",
     "@libsql/client": "^0.15.7",
     "@radix-ui/react-dialog": "^1.1.14",
@@ -29,13 +27,13 @@
     "better-sqlite3": "^11.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jose": "^6.2.8",
     "lucide-react": "^0.511.0",
     "next": "15.3.8",
     "openai": "^4.103.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.56.4",
-    "sqlite3": "^5.1.7",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.25.49",
     "zustand": "^5.0.5"
@@ -48,7 +46,6 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.21",
-    "dotenv": "^16.5.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.2",
     "postcss": "^8.5.3",

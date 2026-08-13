@@ -17,14 +17,6 @@ async function createEntryHandler(request: NextRequest) {
     model,
   } = validateEntryRequest(rawBody);
 
-  console.log(
-    "Creating entry for:",
-    word,
-    `(${sourceLanguage} → ${targetLanguage})`,
-    contextSentence ? "with context" : "without context",
-    providerType ? `using ${providerType}` : "",
-  );
-
   const dictionaryService = DictionaryService.getInstance();
 
   try {
@@ -43,12 +35,6 @@ async function createEntryHandler(request: NextRequest) {
       };
       return NextResponse.json(response, { status: 500 });
     }
-
-    console.log(
-      "Entry created successfully:",
-      result.entry?.headword,
-      result.entry?.metadata.has_context ? "(context-aware)" : "(standard)",
-    );
 
     if (!result.entry) {
       return NextResponse.json(

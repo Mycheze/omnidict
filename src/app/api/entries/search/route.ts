@@ -22,8 +22,6 @@ async function searchEntriesHandler(request: NextRequest) {
   // Validate and sanitize input
   const { filters, page, pageSize } = validateSearchRequest(requestBody);
 
-  console.log('Search request:', { filters, page, pageSize });
-
   const dictionaryService = DictionaryService.getInstance();
 
   try {

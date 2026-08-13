@@ -15,16 +15,7 @@ describe("settingsStore", () => {
 
     it("has correct default preferences", () => {
       const state = useSettingsStore.getState();
-      expect(state.preferences.autoSave).toBe(true);
-      expect(state.preferences.showTranslations).toBe(true);
-      expect(state.preferences.enableClipboardMonitoring).toBe(false);
       expect(state.preferences.darkMode).toBe(false);
-    });
-
-    it("has correct default AI settings", () => {
-      const state = useSettingsStore.getState();
-      expect(state.ai.provider).toBe("deepseek");
-      expect(state.ai.temperature).toBe(0.7);
     });
   });
 
@@ -52,39 +43,9 @@ describe("settingsStore", () => {
   });
 
   describe("updatePreferences", () => {
-    it("merges partial preference update", () => {
+    it("toggles dark mode", () => {
       useSettingsStore.getState().updatePreferences({ darkMode: true });
-
-      const state = useSettingsStore.getState();
-      expect(state.preferences.darkMode).toBe(true);
-      expect(state.preferences.autoSave).toBe(true);
-    });
-
-    it("updates multiple preferences", () => {
-      useSettingsStore.getState().updatePreferences({
-        autoSave: false,
-        enableClipboardMonitoring: true,
-      });
-
-      const state = useSettingsStore.getState();
-      expect(state.preferences.autoSave).toBe(false);
-      expect(state.preferences.enableClipboardMonitoring).toBe(true);
-    });
-  });
-
-  describe("updateAI", () => {
-    it("merges partial AI update", () => {
-      useSettingsStore.getState().updateAI({ temperature: 0.5 });
-
-      const state = useSettingsStore.getState();
-      expect(state.ai.temperature).toBe(0.5);
-      expect(state.ai.provider).toBe("deepseek");
-    });
-
-    it("updates provider", () => {
-      useSettingsStore.getState().updateAI({ provider: "openai" });
-
-      expect(useSettingsStore.getState().ai.provider).toBe("openai");
+      expect(useSettingsStore.getState().preferences.darkMode).toBe(true);
     });
   });
 
@@ -94,14 +55,51 @@ describe("settingsStore", () => {
         .getState()
         .updateLanguages({ sourceLanguage: "Japanese" });
       useSettingsStore.getState().updatePreferences({ darkMode: true });
-      useSettingsStore.getState().updateAI({ temperature: 0.1 });
 
       useSettingsStore.getState().resetToDefaults();
 
       const state = useSettingsStore.getState();
       expect(state.languages.sourceLanguage).toBe("English");
       expect(state.preferences.darkMode).toBe(false);
-      expect(state.ai.temperature).toBe(0.7);
+    });
+  });
+
+  describe("migrate", () => {
+    const migrate = useSettingsStore.persist.getOptions().migrate!;
+
+    it("resets anything below v4 to defaults", () => {
+      const result = migrate(
+        { languages: { sourceLanguage: "Japanese" } },
+        3,
+      ) as { languages: { sourceLanguage: string } };
+      expect(result.languages.sourceLanguage).toBe("English");
+    });
+
+    it("v4 to v5 keeps languages and darkMode, drops dead fields", () => {
+      const result = migrate(
+        {
+          languages: { sourceLanguage: "German", targetLanguage: "French" },
+          preferences: {
+            darkMode: true,
+            autoSave: false,
+            showTranslations: false,
+          },
+          ai: { provider: "deepseek", temperature: 0.7 },
+        },
+        4,
+      ) as Record<string, unknown>;
+
+      expect(result).toEqual({
+        languages: { sourceLanguage: "German", targetLanguage: "French" },
+        preferences: { darkMode: true },
+      });
+    });
+
+    it("handles corrupt persisted state", () => {
+      const result = migrate(null, 4) as {
+        languages: { sourceLanguage: string };
+      };
+      expect(result.languages.sourceLanguage).toBe("English");
     });
   });
 });

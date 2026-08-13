@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ProviderConfig, ProviderTestResult } from "./ModelProvider";
+import { ProviderConfig } from "./ModelProvider";
 import { BaseProvider, ChatMessage } from "./BaseProvider";
+import { PROVIDER_METADATA } from "./metadata";
 
 export class ClaudeProvider extends BaseProvider {
   private client: Anthropic;
@@ -17,34 +18,7 @@ export class ClaudeProvider extends BaseProvider {
       apiKey: config.apiKey,
     });
 
-    this.model = config.model || "claude-3-5-sonnet-20241022";
-  }
-
-  async testConnection(): Promise<ProviderTestResult> {
-    try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 10,
-        messages: [{ role: "user", content: "ping" }],
-      });
-
-      if (response.content && response.content.length > 0) {
-        return {
-          success: true,
-          message: "Connection successful",
-        };
-      }
-
-      return {
-        success: false,
-        error: "No response from API",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
+    this.model = config.model || PROVIDER_METADATA.claude.defaultModel;
   }
 
   protected async callApi(

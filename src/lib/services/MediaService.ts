@@ -24,12 +24,65 @@ export interface MediaGenerationParams {
   definition?: string;
   sentence?: string;
   targetLanguage: string;
-  /** User-supplied keys for the paid APIs; server env vars are the fallback */
+  /**
+   * Key selection for the paid APIs (ElevenLabs, Replicate):
+   * - true: use the server's env keys (paid Refold users, quota-limited)
+   * - false: use ONLY `apiKeys` supplied by the user; a missing key produces
+   *   a per-type "KEY_REQUIRED: <provider>" error instead of silently
+   *   spending the server's money
+   * Google TTS always uses the server's env key (effectively free).
+   */
+  useServerKeys: boolean;
+  /** User-supplied keys for the paid APIs (used when useServerKeys is false) */
   apiKeys?: {
     elevenLabs?: string;
     replicate?: string;
   };
   config: LanguageMediaConfig;
+}
+
+/** Quota units a generation request will consume (server-keyed billing) */
+export interface QuotaRequest {
+  imagesReq: number;
+  ttsReq: number;
+}
+
+/**
+ * Compute how many quota units a request consumes. Only ElevenLabs usage
+ * counts toward the TTS quota — wordAudio goes through Google TTS, which is
+ * env-keyed and effectively free, so only sentenceAudio is counted. Types
+ * are deduplicated, matching how results are keyed per type.
+ */
+export function computeQuotaRequest(types: MediaType[]): QuotaRequest {
+  const unique = new Set(types);
+  return {
+    imagesReq: unique.has("image") ? 1 : 0,
+    ttsReq: unique.has("sentenceAudio") ? 1 : 0,
+  };
+}
+
+/** Parse a positive-integer env var, falling back when missing/invalid */
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Monthly quota limits for paid users, from env with sane defaults */
+export function getMediaQuotaLimits(): {
+  imageLimit: number;
+  ttsLimit: number;
+} {
+  return {
+    imageLimit: parsePositiveInt(process.env.MEDIA_QUOTA_IMAGES_PER_MONTH, 300),
+    ttsLimit: parsePositiveInt(process.env.MEDIA_QUOTA_TTS_PER_MONTH, 600),
+  };
+}
+
+/** Current UTC quota period as YYYY-MM */
+export function currentUsagePeriod(now: Date = new Date()): string {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
 }
 
 /**
@@ -85,6 +138,35 @@ export class MediaService {
     return result;
   }
 
+  /**
+   * Resolve the API key for a paid provider (ElevenLabs / Replicate) per the
+   * key-selection policy. Throws (caught by generate() into result.errors):
+   * - useServerKeys + env key missing → "Server API key not configured"
+   * - user keys + user key missing → "KEY_REQUIRED: <provider>" so the
+   *   client can prompt for a key instead of showing a raw failure
+   */
+  private selectPaidApiKey(
+    params: MediaGenerationParams,
+    provider: "elevenLabs" | "replicate",
+  ): string {
+    if (params.useServerKeys) {
+      const envKey =
+        provider === "elevenLabs"
+          ? process.env.ELEVENLABS_API_KEY
+          : process.env.REPLICATE_API_TOKEN;
+      if (!envKey) {
+        throw new Error("Server API key not configured");
+      }
+      return envKey;
+    }
+
+    const userKey = params.apiKeys?.[provider];
+    if (!userKey) {
+      throw new Error(`KEY_REQUIRED: ${provider}`);
+    }
+    return userKey;
+  }
+
   private async generateWordAudio(
     params: MediaGenerationParams,
   ): Promise<GeneratedMedia> {
@@ -128,12 +210,7 @@ export class MediaService {
   private async generateSentenceAudio(
     params: MediaGenerationParams,
   ): Promise<GeneratedMedia> {
-    const apiKey = params.apiKeys?.elevenLabs || process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        "No ElevenLabs API key — add one in Settings → Media Generation",
-      );
-    }
+    const apiKey = this.selectPaidApiKey(params, "elevenLabs");
     if (!params.sentence) {
       throw new Error("No sentence provided for sentence audio");
     }
@@ -179,12 +256,7 @@ export class MediaService {
   private async generateImage(
     params: MediaGenerationParams,
   ): Promise<GeneratedMedia> {
-    const apiKey = params.apiKeys?.replicate || process.env.REPLICATE_API_TOKEN;
-    if (!apiKey) {
-      throw new Error(
-        "No Replicate API key — add one in Settings → Media Generation",
-      );
-    }
+    const apiKey = this.selectPaidApiKey(params, "replicate");
     if (!params.definition) {
       throw new Error("No definition provided for image generation");
     }

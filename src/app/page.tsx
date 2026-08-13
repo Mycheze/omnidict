@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { ApiQueueStatus } from "@/components/ApiQueueStatus";
 import { SettingsModal } from "@/components/SettingsModal";
+import { AccountBadge } from "@/components/auth/AccountBadge";
 import { ContextSearch } from "@/components/ContextSearch";
 import { EntryDisplay } from "@/components/EntryDisplay";
 import { AddWordForm } from "@/components/AddWordForm";
@@ -15,7 +16,11 @@ import { useImmediateDebounce } from "@/hooks/shared/useDebounce";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useDictionaryStore } from "@/stores/dictionaryStore";
 import { useDictionary } from "@/hooks/dictionary/useDictionary";
-import { useAnkiAutoConnect } from "@/hooks/useAnkiAutoConnect";
+import { useAnkiConnectivity } from "@/hooks/useAnkiConnectivity";
+import { useAnkiQueueMigration } from "@/hooks/useAnkiQueueMigration";
+import { useAuth } from "@/hooks/useAuth";
+import { AnkiQueueStatus } from "@/components/anki/AnkiQueueStatus";
+import { flushPendingCards } from "@/lib/anki";
 
 export default function DictionaryPage() {
   // LOCAL STATE
@@ -67,7 +72,15 @@ export default function DictionaryPage() {
     totalEntries,
   } = useDictionary();
 
-  useAnkiAutoConnect();
+  // Anki connectivity + delayed export queue: when Anki becomes reachable,
+  // flush any cards queued while it was away; on login, move this device's
+  // anonymous queue to the server.
+  const { user } = useAuth();
+  const handleAnkiReachable = useCallback(() => {
+    void flushPendingCards({ loggedIn: Boolean(user) });
+  }, [user]);
+  useAnkiConnectivity(handleAnkiReachable);
+  useAnkiQueueMigration();
 
   // Stable language pair string for change detection
   const languagePair = useMemo(
@@ -228,6 +241,7 @@ export default function DictionaryPage() {
             >
               <Settings className="h-4 w-4" />
             </Button>
+            <AccountBadge />
           </div>
         </div>
       </header>
@@ -289,6 +303,7 @@ export default function DictionaryPage() {
       </div>
 
       <ApiQueueStatus />
+      <AnkiQueueStatus />
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

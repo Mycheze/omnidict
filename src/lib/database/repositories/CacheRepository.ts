@@ -33,7 +33,6 @@ export class CacheRepository {
     try {
       const statements = this.getStatements();
       await statements.setCachedLemma.run(word, lemma, targetLanguage);
-      console.log("Cached lemma:", word, "→", lemma, "for", targetLanguage);
     } catch (error) {
       console.error("Error caching lemma:", error);
     }
@@ -72,9 +71,6 @@ export class CacheRepository {
       const hasExpiresAt = tableInfo.some((col) => col.name === "expires_at");
 
       if (!hasExpiresAt) {
-        console.log(
-          "expires_at column not found in lemma_cache, skipping expired cleanup",
-        );
         return 0;
       }
 
@@ -85,7 +81,6 @@ export class CacheRepository {
       const result = await stmt.run();
 
       if (result.changes > 0) {
-        console.log("Cleared", result.changes, "expired lemma cache entries");
       }
 
       return result.changes;
@@ -103,7 +98,6 @@ export class CacheRepository {
       const db = this.core.getDatabase();
       const stmt = db.prepare("DELETE FROM lemma_cache");
       await stmt.run();
-      console.log("Cleared all lemma cache");
     } catch (error) {
       console.error("Error clearing lemma cache:", error);
     }
@@ -169,7 +163,6 @@ export class CacheRepository {
       const result = await stmt.run(maxAge);
 
       if (result.changes > 0) {
-        console.log("Optimized cache: removed", result.changes, "old entries");
       }
     } catch (error) {
       console.error("Error optimizing cache:", error);
@@ -264,7 +257,6 @@ export class CacheRepository {
         preloadMap.set(key, row.lemma);
       });
 
-      console.log(`Preloaded ${preloadMap.size} frequent lemmas`);
       return preloadMap;
     } catch (error) {
       console.error("Error preloading frequent lemmas:", error);
@@ -299,9 +291,6 @@ export class CacheRepository {
         }
       }
 
-      console.log(
-        `Bulk cached ${cached} lemmas out of ${lemmas.length} requested`,
-      );
       return cached;
     } catch (error) {
       console.error("Error in bulk cache operation:", error);

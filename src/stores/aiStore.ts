@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AIProviderType } from "@/lib/ai/providers/metadata";
+import {
+  AIProviderType,
+  PROVIDER_METADATA,
+  isKnownModel,
+  isValidProviderType,
+} from "@/lib/ai/providers/metadata";
 
 /**
  * AI Provider Settings
@@ -37,16 +42,24 @@ interface AIState extends AISettings {
   resetSettings: () => void;
 }
 
+/** Default model per provider, derived from the metadata registry */
+function defaultModels(): Record<AIProviderType, string> {
+  return Object.fromEntries(
+    Object.values(PROVIDER_METADATA).map((p) => [p.id, p.defaultModel]),
+  ) as Record<AIProviderType, string>;
+}
+
 const defaultSettings: AISettings = {
   selectedProvider: "deepseek",
   apiKeys: {},
-  selectedModels: {
-    deepseek: "deepseek-v4-flash",
-    chatgpt: "gpt-4o",
-    claude: "claude-3-5-sonnet-20241022",
-    gemini: "gemini-2.5-flash",
-  },
+  selectedModels: defaultModels(),
   lastTestResults: {},
+};
+
+// DeepSeek legacy model names sunset 2026-07-24; remap persisted values
+const LEGACY_MODEL_MAP: Record<string, string> = {
+  "deepseek-chat": "deepseek-v4-flash",
+  "deepseek-reasoner": "deepseek-v4-pro",
 };
 
 export const useAIStore = create<AIState>()(
@@ -95,7 +108,7 @@ export const useAIStore = create<AIState>()(
     }),
     {
       name: "omnidict-ai-settings",
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         // Guard rather than assert: localStorage contents are untrusted
         if (
@@ -105,22 +118,39 @@ export const useAIStore = create<AIState>()(
         ) {
           return defaultSettings;
         }
-        const state = { ...defaultSettings, ...persistedState };
-        if (version < 2) {
-          // DeepSeek legacy model names sunset 2026-07-24; remap persisted values
-          const legacyModelMap: Record<string, string> = {
-            "deepseek-chat": "deepseek-v4-flash",
-            "deepseek-reasoner": "deepseek-v4-pro",
-          };
-          const persisted = state.selectedModels?.deepseek;
-          if (persisted && legacyModelMap[persisted]) {
-            state.selectedModels = {
-              ...state.selectedModels,
-              deepseek: legacyModelMap[persisted],
-            };
+        const persisted = persistedState as Partial<AISettings>;
+
+        // Deep-merge selectedModels over defaults (never clobber the map),
+        // remap legacy DeepSeek names, and reset any model id the current
+        // registry doesn't recognize to that provider's default.
+        const mergedModels: Record<AIProviderType, string> = defaultModels();
+        for (const [provider, model] of Object.entries(
+          persisted.selectedModels ?? {},
+        )) {
+          if (!isValidProviderType(provider) || typeof model !== "string") {
+            continue;
           }
+          const remapped = LEGACY_MODEL_MAP[model] ?? model;
+          if (isKnownModel(provider, remapped)) {
+            mergedModels[provider] = remapped;
+          }
+          // Unknown/stale ids keep the registry default set above
         }
-        return state;
+
+        const selectedProvider =
+          typeof persisted.selectedProvider === "string" &&
+          isValidProviderType(persisted.selectedProvider)
+            ? persisted.selectedProvider
+            : defaultSettings.selectedProvider;
+
+        void version; // migration is idempotent across all prior versions
+
+        return {
+          ...defaultSettings,
+          ...persisted,
+          selectedProvider,
+          selectedModels: mergedModels,
+        };
       },
     },
   ),

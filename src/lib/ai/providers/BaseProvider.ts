@@ -25,7 +25,27 @@ export abstract class BaseProvider implements ModelProvider {
     options: { temperature?: number; maxTokens?: number; thinking?: boolean },
   ): Promise<string>;
 
-  abstract testConnection(): Promise<ProviderTestResult>;
+  /**
+   * Connection test that exercises the SAME code path and parameter profile
+   * as production calls (temperature, token budget, thinking flag), so a
+   * green test cannot diverge from real generation behavior.
+   */
+  async testConnection(): Promise<ProviderTestResult> {
+    try {
+      await this.callApi(
+        [{ role: "user", content: "Reply with the single word: pong" }],
+        // Mirrors the lemma path (the most constrained production profile);
+        // budget covers reasoning tokens on thinking-enabled models
+        { temperature: 0.3, maxTokens: 400, thinking: true },
+      );
+      return { success: true, message: "Connection successful" };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
 
   async generateEntry(params: {
     word: string;
@@ -33,17 +53,14 @@ export abstract class BaseProvider implements ModelProvider {
     targetLanguage: string;
   }): Promise<DictionaryEntry | null> {
     try {
-      const langDirection = this.detectLanguageDirection(
-        params.word,
-        params.sourceLanguage,
-        params.targetLanguage,
-      );
-
+      // The word passed here is a TARGET-language lemma (guaranteed by the
+      // lemmatization contract). Definitions are always in the base/source
+      // language; no input-language guessing is needed.
       const prompt = await this.loadPrompt("prompt.txt");
       const processedPrompt = this.processPrompt(prompt, {
-        SOURCE_LANGUAGE: langDirection.actualSourceLang,
-        TARGET_LANGUAGE: langDirection.actualTargetLang,
-        DEFINITION_LANGUAGE: langDirection.definitionLang,
+        SOURCE_LANGUAGE: params.sourceLanguage,
+        TARGET_LANGUAGE: params.targetLanguage,
+        DEFINITION_LANGUAGE: params.sourceLanguage,
       });
 
       const text = await this.callApi(
@@ -66,7 +83,7 @@ export abstract class BaseProvider implements ModelProvider {
         entry.metadata = {
           source_language: params.sourceLanguage,
           target_language: params.targetLanguage,
-          definition_language: langDirection.definitionLang,
+          definition_language: params.sourceLanguage,
         };
       }
 
@@ -83,17 +100,11 @@ export abstract class BaseProvider implements ModelProvider {
     targetLanguage: string;
   }): Promise<DictionaryEntry | null> {
     try {
-      const langDirection = this.detectLanguageDirection(
-        params.word,
-        params.sourceLanguage,
-        params.targetLanguage,
-      );
-
       const prompt = await this.loadPrompt("prompt.txt");
       const processedPrompt = this.processPrompt(prompt, {
-        SOURCE_LANGUAGE: langDirection.actualSourceLang,
-        TARGET_LANGUAGE: langDirection.actualTargetLang,
-        DEFINITION_LANGUAGE: langDirection.definitionLang,
+        SOURCE_LANGUAGE: params.sourceLanguage,
+        TARGET_LANGUAGE: params.targetLanguage,
+        DEFINITION_LANGUAGE: params.sourceLanguage,
       });
 
       const currentTime = new Date().toISOString();
@@ -127,7 +138,7 @@ export abstract class BaseProvider implements ModelProvider {
         entry.metadata = {
           source_language: params.sourceLanguage,
           target_language: params.targetLanguage,
-          definition_language: langDirection.definitionLang,
+          definition_language: params.sourceLanguage,
         };
       }
 
@@ -141,9 +152,17 @@ export abstract class BaseProvider implements ModelProvider {
   async getLemma(params: {
     word: string;
     targetLanguage: string;
+    /** Base/definition language of the learner. Defaults to English. */
+    sourceLanguage?: string;
   }): Promise<LemmaResponse> {
+    const sourceLanguage = params.sourceLanguage || "English";
+    // Include the base language in the cache key: the lemma contract maps
+    // base-language input to a target-language lemma, so results depend on
+    // BOTH languages. The `base:` segment also keeps stale rows cached under
+    // the old (target-only) contract from ever colliding with new lookups.
+    const cacheKey = `${params.word}|base:${sourceLanguage}`;
     const cachedLemma = await this.db.getCachedLemma(
-      params.word,
+      cacheKey,
       params.targetLanguage,
     );
     if (cachedLemma) {
@@ -155,15 +174,14 @@ export abstract class BaseProvider implements ModelProvider {
       const processedPrompt = this.processPrompt(prompt, {
         TARGET_WORD: params.word,
         TARGET_LANGUAGE: params.targetLanguage,
-        SOURCE_LANGUAGE: "English",
+        SOURCE_LANGUAGE: sourceLanguage,
       });
 
       const text = await this.callApi(
         [
           {
             role: "system",
-            content:
-              "You are a lemmatization function. Return only the lemma form, no additional text.",
+            content: `You are a lemmatization and translation function. Always return a single ${params.targetLanguage} dictionary lemma, no additional text.`,
           },
           {
             role: "user",
@@ -181,7 +199,7 @@ export abstract class BaseProvider implements ModelProvider {
         );
         return { lemma: params.word, cached: false, fallback: true };
       }
-      await this.db.cacheLemma(params.word, lemma, params.targetLanguage);
+      await this.db.cacheLemma(cacheKey, lemma, params.targetLanguage);
 
       return { lemma, cached: false };
     } catch (error) {
@@ -194,12 +212,17 @@ export abstract class BaseProvider implements ModelProvider {
     word: string;
     contextSentence: string;
     targetLanguage: string;
+    /** Base/definition language of the learner. Defaults to English. */
+    sourceLanguage?: string;
   }): Promise<LemmaResponse> {
+    const sourceLanguage = params.sourceLanguage || "English";
     const contextHash = createHash("sha256")
       .update(params.contextSentence)
       .digest("hex")
       .substring(0, 16);
-    const cacheKey = `${params.word}|ctx:${contextHash}`;
+    // `base:` segment: see getLemma — result depends on both languages, and
+    // it isolates the new contract from stale pre-contract cache rows.
+    const cacheKey = `${params.word}|base:${sourceLanguage}|ctx:${contextHash}`;
     const cachedLemma = await this.db.getCachedLemma(
       cacheKey,
       params.targetLanguage,
@@ -214,14 +237,14 @@ export abstract class BaseProvider implements ModelProvider {
         TARGET_WORD: params.word,
         SENTENCE_CONTEXT: params.contextSentence,
         TARGET_LANGUAGE: params.targetLanguage,
+        SOURCE_LANGUAGE: sourceLanguage,
       });
 
       const text = await this.callApi(
         [
           {
             role: "system",
-            content:
-              "You are a lemmatization function that uses sentence context to find the correct dictionary headword.",
+            content: `You are a lemmatization and translation function that uses sentence context to find the correct dictionary headword. Always return a single ${params.targetLanguage} dictionary lemma, no additional text.`,
           },
           {
             role: "user",
@@ -256,26 +279,30 @@ export abstract class BaseProvider implements ModelProvider {
     sourceLanguage: string;
     targetLanguage: string;
     contextSentence: string;
+    lemma?: string;
   }): Promise<DictionaryEntry | null> {
     try {
-      const { lemma } = await this.getLemmaWithContext({
-        word: params.word,
-        contextSentence: params.contextSentence,
-        targetLanguage: params.targetLanguage,
-      });
+      const lemma =
+        params.lemma ??
+        (
+          await this.getLemmaWithContext({
+            word: params.word,
+            contextSentence: params.contextSentence,
+            targetLanguage: params.targetLanguage,
+            sourceLanguage: params.sourceLanguage,
+          })
+        ).lemma;
 
-      const langDirection = this.detectLanguageDirection(
-        lemma,
-        params.sourceLanguage,
-        params.targetLanguage,
-      );
-
+      // The lemma is a TARGET-language headword (guaranteed by the
+      // lemmatization contract); definitions are always in the base/source
+      // language.
       const prompt = await this.loadPrompt("prompt_with_context.txt");
       const processedPrompt = this.processPrompt(prompt, {
-        SOURCE_LANGUAGE: langDirection.actualSourceLang,
-        TARGET_LANGUAGE: langDirection.actualTargetLang,
-        DEFINITION_LANGUAGE: langDirection.definitionLang,
+        SOURCE_LANGUAGE: params.sourceLanguage,
+        TARGET_LANGUAGE: params.targetLanguage,
+        DEFINITION_LANGUAGE: params.sourceLanguage,
         TARGET_WORD: params.word,
+        TARGET_LEMMA: lemma,
         SENTENCE_CONTEXT: params.contextSentence,
       });
 
@@ -299,7 +326,7 @@ export abstract class BaseProvider implements ModelProvider {
         entry.metadata = {
           source_language: params.sourceLanguage,
           target_language: params.targetLanguage,
-          definition_language: langDirection.definitionLang,
+          definition_language: params.sourceLanguage,
           has_context: true,
           context_sentence: params.contextSentence,
         };
@@ -387,91 +414,6 @@ Do NOT render the word "${params.headword}" or any text in the image.`;
       `${this.providerName}: Image prompt FAILED after 3 attempts for "${params.headword}" — render will be skipped`,
     );
     return null;
-  }
-
-  async validateLanguage(languageName: string): Promise<{
-    standardizedName: string;
-    displayName: string;
-  }> {
-    try {
-      const prompt = await this.loadPrompt("language_validation_prompt.txt");
-      const processedPrompt = this.processPrompt(prompt, {
-        INPUT_LANGUAGE: languageName,
-      });
-
-      const text = await this.callApi(
-        [
-          {
-            role: "system",
-            content:
-              "You are a language identification assistant. Return only valid JSON.",
-          },
-          {
-            role: "user",
-            content: processedPrompt,
-          },
-        ],
-        { temperature: 0.3, maxTokens: 200 },
-      );
-
-      const result = JSON.parse(text.trim());
-      return {
-        standardizedName: result.standardized_name || languageName,
-        displayName: result.display_name || languageName,
-      };
-    } catch (error) {
-      console.error(`${this.providerName}: Error validating language:`, error);
-      return {
-        standardizedName: languageName,
-        displayName: languageName,
-      };
-    }
-  }
-
-  protected detectLanguageDirection(
-    word: string,
-    sourceLanguage: string,
-    targetLanguage: string,
-  ): {
-    actualSourceLang: string;
-    actualTargetLang: string;
-    definitionLang: string;
-    needsTranslation: boolean;
-  } {
-    const hasCzechDiacritics = /[áčďéěíňóřšťúůýž]/i.test(word);
-    const hasGermanDiacritics = /[äöüß]/i.test(word);
-    const hasSpanishDiacritics = /[ñáéíóúü]/i.test(word);
-
-    let detectedSourceLang = sourceLanguage;
-    let detectedTargetLang = targetLanguage;
-    let detectedDefinitionLang = sourceLanguage;
-
-    if (targetLanguage.toLowerCase() === "czech" && hasCzechDiacritics) {
-      detectedSourceLang = targetLanguage;
-      detectedTargetLang = targetLanguage;
-      detectedDefinitionLang = sourceLanguage;
-    } else if (
-      targetLanguage.toLowerCase() === "german" &&
-      hasGermanDiacritics
-    ) {
-      detectedSourceLang = targetLanguage;
-      detectedTargetLang = targetLanguage;
-      detectedDefinitionLang = sourceLanguage;
-    } else if (
-      targetLanguage.toLowerCase() === "spanish" &&
-      hasSpanishDiacritics
-    ) {
-      detectedSourceLang = targetLanguage;
-      detectedTargetLang = targetLanguage;
-      detectedDefinitionLang = sourceLanguage;
-    }
-
-    return {
-      actualSourceLang: detectedSourceLang,
-      actualTargetLang: detectedTargetLang,
-      definitionLang: detectedDefinitionLang,
-      needsTranslation: detectedSourceLang !== detectedTargetLang,
-    };
   }
 
   protected async loadPrompt(filename: string): Promise<string> {

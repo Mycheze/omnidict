@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { checkRateLimit, validateOrigin, sanitizeError } from "./validation";
+import {
+  checkRateLimit,
+  validateOrigin,
+  sanitizeError,
+  redactSensitive,
+} from "./validation";
 
 export interface SecurityOptions {
   rateLimit?: {
@@ -79,14 +84,21 @@ export function withSecurity<T extends any[]>(
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Log error if enabled
+      // Log error if enabled; redact key-shaped substrings so credentials
+      // from request bodies never reach the logs
       if (options.logErrors !== false) {
         console.error("API Error:", {
           method: request.method,
           url: request.url,
           duration,
-          error: error instanceof Error ? error.message : "Unknown error",
-          stack: error instanceof Error ? error.stack : undefined,
+          error:
+            error instanceof Error
+              ? redactSensitive(error.message)
+              : "Unknown error",
+          stack:
+            error instanceof Error && error.stack
+              ? redactSensitive(error.stack)
+              : undefined,
         });
       }
 

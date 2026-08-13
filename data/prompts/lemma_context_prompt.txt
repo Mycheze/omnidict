@@ -2,18 +2,22 @@ For the word or phrase '[TARGET_WORD]' in the following sentence:
 
 "[SENTENCE_CONTEXT]"
 
-Return ONLY the dictionary headword (lemma) in its base form, in [TARGET_LANGUAGE].
+Language settings:
+- BASE LANGUAGE (the learner's own language): [SOURCE_LANGUAGE]
+- TARGET LANGUAGE (the language being learned): [TARGET_LANGUAGE]
+
+Return ONLY the [TARGET_LANGUAGE] dictionary headword (lemma) that '[TARGET_WORD]' should be studied under. The word and the sentence may be written in either language.
 
 Follow these rules:
-1. Use the sentence context to determine the correct lemma
-2. If '[TARGET_WORD]' is part of a multi-word expression, return the complete expression's lemma
-3. If '[TARGET_WORD]' is a conjugated/inflected form, return its base form
-4. If '[TARGET_WORD]' is already in its base form, return it as is
-5. Output MUST be one or more [TARGET_LANGUAGE] words, with no additional text, explanations, or punctuation
+1. Use the sentence context to determine the intended meaning of '[TARGET_WORD]'
+2. If '[TARGET_WORD]' is a [TARGET_LANGUAGE] word: return its [TARGET_LANGUAGE] lemma (base citation form). If it is already in base form, return it as is
+3. If '[TARGET_WORD]' is a [SOURCE_LANGUAGE] word (or any language other than [TARGET_LANGUAGE]): translate the meaning it has in this sentence to its most common [TARGET_LANGUAGE] equivalent and return that equivalent as a lemma
+4. If '[TARGET_WORD]' is part of a multi-word expression in the sentence, return the complete expression's lemma (translated to [TARGET_LANGUAGE] if needed)
+5. Output MUST be one or more [TARGET_LANGUAGE] words, with no additional text, explanations, or punctuation. NEVER return a [SOURCE_LANGUAGE] word
 
 Special handling for multi-word expressions:
 - Idioms/Fixed expressions: Return the full canonical form
 - Phrasal verbs: Include all particles in their correct positions
 - Compound terms: Preserve the entire compound (e.g., "coffee table" not just "table")
 
-Analyze the surrounding words in "[SENTENCE_CONTEXT]" to determine if '[TARGET_WORD]' is part of a larger expression.
+Analyze the surrounding words in "[SENTENCE_CONTEXT]" to determine if '[TARGET_WORD]' is part of a larger expression and which of its meanings is intended.

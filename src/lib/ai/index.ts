@@ -34,39 +34,30 @@ export interface AIManagerConfig {
 class AIManager {
   private provider: ModelProvider;
   private static instance: AIManager | null = null;
-  private static config: AIManagerConfig | null = null;
 
   constructor(config?: AIManagerConfig) {
-    const finalConfig = config || AIManager.config || {};
+    const finalConfig = config || {};
 
-    // Default to DeepSeek with environment variable
+    // Default to DeepSeek (server env key)
     const providerType: AIProviderType = finalConfig.providerType || "deepseek";
 
-    const providerConfig: ProviderConfig | undefined =
-      providerType === "deepseek" && !finalConfig.apiKey
-        ? undefined // DeepSeek will use env variable
-        : {
-            apiKey: finalConfig.apiKey || "",
-            model: finalConfig.model || "",
-          };
+    // Always pass the full config through: the model selection must never be
+    // dropped. Providers with an env fallback treat an empty apiKey as "use
+    // the server key"; an empty model falls back to the provider default.
+    const providerConfig: ProviderConfig = {
+      apiKey: finalConfig.apiKey || "",
+      model: finalConfig.model || "",
+    };
 
     this.provider = createProvider(providerType, providerConfig);
   }
 
   /**
-   * Configure the default AIManager instance
-   */
-  public static configure(config: AIManagerConfig): void {
-    AIManager.config = config;
-    AIManager.instance = null; // Force recreation on next getInstance()
-  }
-
-  /**
-   * Get singleton instance of AIManager
+   * Get singleton instance of AIManager (default provider + env key)
    */
   public static getInstance(): AIManager {
     if (!AIManager.instance) {
-      AIManager.instance = new AIManager(AIManager.config || undefined);
+      AIManager.instance = new AIManager();
     }
     return AIManager.instance;
   }
@@ -85,8 +76,9 @@ class AIManager {
   public async getLemma({
     word,
     targetLanguage,
+    sourceLanguage,
   }: LemmaRequest): Promise<LemmaResponse> {
-    return this.provider.getLemma({ word, targetLanguage });
+    return this.provider.getLemma({ word, targetLanguage, sourceLanguage });
   }
 
   /**
@@ -126,15 +118,18 @@ class AIManager {
     word,
     contextSentence,
     targetLanguage,
+    sourceLanguage,
   }: {
     word: string;
     contextSentence: string;
     targetLanguage: string;
+    sourceLanguage?: string;
   }): Promise<LemmaResponse> {
     return this.provider.getLemmaWithContext({
       word,
       contextSentence,
       targetLanguage,
+      sourceLanguage,
     });
   }
 
@@ -146,23 +141,17 @@ class AIManager {
     sourceLanguage,
     targetLanguage,
     contextSentence,
-  }: ContextualEntryGenerationRequest): Promise<DictionaryEntry | null> {
+    lemma,
+  }: ContextualEntryGenerationRequest & {
+    lemma?: string;
+  }): Promise<DictionaryEntry | null> {
     return this.provider.generateContextualEntry({
       word,
       sourceLanguage,
       targetLanguage,
       contextSentence,
+      lemma,
     });
-  }
-
-  /**
-   * Validate a language name
-   */
-  public async validateLanguage(languageName: string): Promise<{
-    standardizedName: string;
-    displayName: string;
-  }> {
-    return this.provider.validateLanguage(languageName);
   }
 
   /**

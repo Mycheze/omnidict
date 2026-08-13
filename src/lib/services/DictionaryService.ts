@@ -1,24 +1,7 @@
 import DatabaseManager from "@/lib/database";
 import AIManager, { AIManagerConfig } from "@/lib/ai";
-import { AIProviderType } from "@/lib/ai/providers/metadata";
-import {
-  DictionaryEntry,
-  SearchFilters,
-  SearchResult,
-  LemmaRequest,
-  LemmaResponse,
-} from "@/lib/types";
-
-const VALID_PROVIDER_TYPES: readonly string[] = [
-  "deepseek",
-  "chatgpt",
-  "claude",
-  "gemini",
-] as const;
-
-function isValidProviderType(value: string): value is AIProviderType {
-  return VALID_PROVIDER_TYPES.includes(value);
-}
+import { isValidProviderType } from "@/lib/ai/providers/metadata";
+import { DictionaryEntry, SearchFilters, SearchResult } from "@/lib/types";
 
 /**
  * Dictionary Service Layer
@@ -85,27 +68,25 @@ export class DictionaryService {
     providerConfig?: { providerType?: string; apiKey?: string; model?: string },
   ): Promise<{ success: boolean; entry?: DictionaryEntry; error?: string }> {
     try {
-      console.log(
-        "Creating entry for:",
-        word,
-        `(${sourceLanguage} → ${targetLanguage})`,
-      );
-
       const ai = this.getAIForConfig(providerConfig);
 
-      // First, get the lemma form of the word
+      // First, resolve the word to its TARGET-language lemma. The word may be
+      // typed in either the base or the target language; the lemma contract
+      // always yields a target-language headword.
       let lemma: string;
       if (contextSentence && contextSentence.trim()) {
         const { lemma: contextualLemma } = await ai.getLemmaWithContext({
           word,
           contextSentence: contextSentence.trim(),
           targetLanguage,
+          sourceLanguage,
         });
         lemma = contextualLemma;
       } else {
         const { lemma: standardLemma } = await ai.getLemma({
           word,
           targetLanguage,
+          sourceLanguage,
         });
         lemma = standardLemma;
       }
@@ -125,7 +106,6 @@ export class DictionaryService {
       }
 
       if (existingEntry) {
-        console.log("Entry already exists for:", lemma);
         return {
           success: true,
           entry: existingEntry,
@@ -140,6 +120,8 @@ export class DictionaryService {
           sourceLanguage,
           targetLanguage,
           contextSentence: contextSentence.trim(),
+          // Reuse the lemma resolved above instead of re-deriving it
+          lemma,
         });
       } else {
         entry = await ai.generateEntry({
@@ -164,12 +146,6 @@ export class DictionaryService {
           error: "Failed to save entry to database",
         };
       }
-
-      console.log(
-        "Entry created successfully:",
-        entry.headword,
-        entry.metadata.has_context ? "(context-aware)" : "(standard)",
-      );
 
       return {
         success: true,
@@ -231,12 +207,6 @@ export class DictionaryService {
     providerConfig?: { providerType?: string; apiKey?: string; model?: string },
   ): Promise<{ success: boolean; entry?: DictionaryEntry; error?: string }> {
     try {
-      console.log(
-        "Regenerating entry for:",
-        headword,
-        `(${sourceLanguage} → ${targetLanguage})`,
-      );
-
       // Check if entry exists
       const existingEntry = await this.db.getEntryByHeadword(
         headword,
@@ -278,8 +248,6 @@ export class DictionaryService {
           error: "Failed to save regenerated entry",
         };
       }
-
-      console.log("Entry regenerated successfully:", newEntry.headword);
 
       return {
         success: true,
@@ -452,58 +420,6 @@ export class DictionaryService {
     }
   }
 
-  // ===== LEMMA OPERATIONS =====
-
-  /**
-   * Get lemma for a word
-   */
-  public async getLemma(
-    request: LemmaRequest,
-  ): Promise<{ success: boolean; result?: LemmaResponse; error?: string }> {
-    try {
-      const result = await this.ai.getLemma(request);
-
-      return {
-        success: true,
-        result,
-      };
-    } catch (error) {
-      console.error("Error in getLemma:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  /**
-   * Get contextual lemma
-   */
-  public async getContextualLemma(
-    word: string,
-    contextSentence: string,
-    targetLanguage: string,
-  ): Promise<{ success: boolean; result?: LemmaResponse; error?: string }> {
-    try {
-      const result = await this.ai.getLemmaWithContext({
-        word,
-        contextSentence,
-        targetLanguage,
-      });
-
-      return {
-        success: true,
-        result,
-      };
-    } catch (error) {
-      console.error("Error in getContextualLemma:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
   // ===== LANGUAGE OPERATIONS =====
 
   /**
@@ -527,50 +443,6 @@ export class DictionaryService {
       };
     } catch (error) {
       console.error("Error in getAllLanguages:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // ===== ANALYTICS OPERATIONS =====
-
-  /**
-   * Get comprehensive dictionary statistics
-   */
-  public async getDictionaryStats(
-    sourceLanguage?: string,
-    targetLanguage?: string,
-  ): Promise<{
-    success: boolean;
-    stats?: {
-      overview: Awaited<ReturnType<DatabaseManager["getDatabaseStats"]>>;
-      searchStats: Awaited<ReturnType<DatabaseManager["getSearchStats"]>>;
-      cacheStats: Awaited<ReturnType<DatabaseManager["getCacheStats"]>>;
-      languages: Awaited<ReturnType<DatabaseManager["getAllLanguages"]>>;
-    };
-    error?: string;
-  }> {
-    try {
-      const [searchStats, cacheStats, languages] = await Promise.all([
-        this.db.getSearchStats(sourceLanguage, targetLanguage),
-        this.db.getCacheStats(),
-        this.db.getAllLanguages(),
-      ]);
-      const overview = await this.db.getDatabaseStats();
-
-      return {
-        success: true,
-        stats: {
-          overview,
-          searchStats,
-          cacheStats,
-          languages,
-        },
-      };
-    } catch (error) {
-      console.error("Error in getDictionaryStats:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

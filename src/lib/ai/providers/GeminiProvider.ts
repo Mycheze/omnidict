@@ -1,9 +1,10 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ProviderConfig, ProviderTestResult } from "./ModelProvider";
+import { GoogleGenAI } from "@google/genai";
+import { ProviderConfig } from "./ModelProvider";
 import { BaseProvider, ChatMessage } from "./BaseProvider";
+import { PROVIDER_METADATA } from "./metadata";
 
 export class GeminiProvider extends BaseProvider {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private modelName: string;
 
   constructor(config: ProviderConfig) {
@@ -13,34 +14,8 @@ export class GeminiProvider extends BaseProvider {
       throw new Error("Google API key is required");
     }
 
-    this.client = new GoogleGenerativeAI(config.apiKey);
-    this.modelName = config.model || "gemini-2.5-flash";
-  }
-
-  async testConnection(): Promise<ProviderTestResult> {
-    try {
-      const model = this.client.getGenerativeModel({ model: this.modelName });
-      const result = await model.generateContent("ping");
-      const response = await result.response;
-      const text = response.text();
-
-      if (text) {
-        return {
-          success: true,
-          message: "Connection successful",
-        };
-      }
-
-      return {
-        success: false,
-        error: "No response from API",
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
+    this.client = new GoogleGenAI({ apiKey: config.apiKey });
+    this.modelName = config.model || PROVIDER_METADATA.gemini.defaultModel;
   }
 
   protected async callApi(
@@ -52,17 +27,16 @@ export class GeminiProvider extends BaseProvider {
     const systemText = systemMessages.map((m) => m.content).join("\n");
     const userText = userMessages.map((m) => m.content).join("\n");
 
-    const fullPrompt = systemText + "\n\n" + userText;
-
-    const model = this.client.getGenerativeModel({
+    const response = await this.client.models.generateContent({
       model: this.modelName,
-      generationConfig: {
+      contents: userText,
+      config: {
+        systemInstruction: systemText || undefined,
         temperature: options.temperature,
         maxOutputTokens: options.maxTokens,
       },
     });
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    return response.text();
+
+    return response.text?.trim() || "";
   }
 }

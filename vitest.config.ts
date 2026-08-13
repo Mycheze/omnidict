@@ -12,10 +12,10 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: [
-        "src/lib/security/validation.ts",
-        "src/lib/security/middleware.ts",
+        "src/lib/**",
         "src/stores/**",
-        "src/lib/services/DictionaryService.ts",
+        "src/hooks/**",
+        "src/app/api/**",
       ],
     },
   },
